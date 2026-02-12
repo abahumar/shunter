@@ -17,6 +17,8 @@ from scanner.data_fetcher import fetch_stock_data, fetch_bulk_data
 from scanner.indicators import compute_indicators, get_latest_indicators
 from scanner.signals import analyze_stock
 from scanner.portfolio import get_portfolio
+from scanner.sectors import analyze_sectors
+from scanner.advanced import multi_timeframe_score, detect_volume_spike
 from scanner.telegram_notify import (
     send_message,
     format_scan_results,
@@ -45,6 +47,13 @@ def run_scan(shariah: bool = True, min_price: float = 0.50, max_price: float = 3
 
             analysis = analyze_stock(ind)
             if analysis["signal"] in ("STRONG BUY", "BUY"):
+                # Multi-timeframe bonus and volume spike
+                mtf_bonus, mtf_desc = multi_timeframe_score(df)
+                analysis["net_score"] += mtf_bonus
+
+                spike = detect_volume_spike(df)
+                analysis["spike"] = f"{spike['volume_ratio']:.1f}x" if spike else ""
+
                 analysis["symbol"] = symbol
                 analysis["name"] = get_symbol_name(symbol)
                 analysis["close"] = close
@@ -53,7 +62,7 @@ def run_scan(shariah: bool = True, min_price: float = 0.50, max_price: float = 3
             continue
 
     results.sort(key=lambda x: x["net_score"], reverse=True)
-    return results[:top_n]
+    return results[:top_n], data
 
 
 def check_portfolio_alerts():
@@ -112,7 +121,7 @@ def main():
 
     # 1. Scan for BUY signals
     print("\n📊 Scanning stocks...")
-    results = run_scan(
+    results, stock_data = run_scan(
         shariah=args.shariah,
         min_price=args.min_price,
         max_price=args.max_price,
@@ -121,6 +130,23 @@ def main():
     print(f"✓ Found {len(results)} BUY signals")
 
     scan_msg = format_scan_results(results, shariah=args.shariah)
+
+    # 1b. Sector rotation summary
+    sectors = analyze_sectors(stock_data)
+    sector_msg = "\n\n<b>🔄 Sector Rotation</b>\n"
+    for s in sectors[:5]:
+        arrow = "🟢" if s["avg_pct_1m"] > 0 else "🔴"
+        sector_msg += f"{arrow} <b>{s['sector']}</b>: {s['avg_pct_1m']:+.1f}% | {s['buy_signals']} buys\n"
+
+    # 1c. Volume spikes
+    spikes = []
+    for symbol, df in stock_data.items():
+        spike = detect_volume_spike(df)
+        if spike:
+            spikes.append(f"⚡ {symbol} ({spike['volume_ratio']:.1f}x, {spike['price_change']:+.1f}%)")
+    spike_msg = ""
+    if spikes:
+        spike_msg = "\n\n<b>⚡ Volume Spikes</b>\n" + "\n".join(spikes[:10])
 
     # 2. Check portfolio (if requested)
     sell_msg = ""
@@ -136,7 +162,7 @@ def main():
         print(f"✓ Portfolio checked ({len(statuses)} stocks)")
 
     # 3. Send or print
-    full_msg = scan_msg + sell_msg + portfolio_msg
+    full_msg = scan_msg + sector_msg + spike_msg + sell_msg + portfolio_msg
 
     if args.no_telegram:
         # Strip HTML tags for console output

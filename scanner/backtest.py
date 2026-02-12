@@ -46,6 +46,7 @@ def backtest(
     stop_loss_pct: float = -10.0,
     min_price: float = 0.10,
     max_price: float = 0.0,
+    trailing_stop: bool = False,
 ) -> dict:
     """
     Run backtest simulation.
@@ -102,10 +103,20 @@ def backtest(
                 continue
 
             current_close = sdf.iloc[sym_idx]["Close"]
-            current_pnl = ((current_close - pos["buy_price"]) / pos["buy_price"]) * 100
 
-            # Stop-loss: sell immediately if price drops below threshold
-            if stop_loss_pct is not None and current_pnl <= stop_loss_pct:
+            # Trailing stop: update highest price seen
+            if trailing_stop:
+                if "highest" not in pos:
+                    pos["highest"] = pos["buy_price"]
+                pos["highest"] = max(pos["highest"], current_close)
+                stop_ref = pos["highest"]
+            else:
+                stop_ref = pos["buy_price"]
+
+            current_pnl_from_stop = ((current_close - stop_ref) / stop_ref) * 100
+
+            # Stop-loss: sell if price drops below threshold from reference
+            if stop_loss_pct is not None and current_pnl_from_stop <= stop_loss_pct:
                 sym_next_idx = sym_idx + 1
                 if sym_next_idx < len(sdf):
                     sell_price = sdf.iloc[sym_next_idx]["Open"]
@@ -121,7 +132,7 @@ def backtest(
                         "buy_score": pos["buy_score"],
                         "sell_date": sell_date,
                         "sell_price": sell_price,
-                        "sell_signal": "STOP-LOSS",
+                        "sell_signal": "TRAILING-STOP" if trailing_stop else "STOP-LOSS",
                         "pnl_pct": pnl_pct,
                         "hold_days": hold_days,
                     })

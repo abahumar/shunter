@@ -31,6 +31,13 @@ from scanner.indicators import compute_indicators, get_latest_indicators
 from scanner.signals import analyze_stock
 from scanner.backtest import backtest, print_backtest_results
 from scanner.portfolio import add_stock, remove_stock, get_portfolio
+from scanner.sectors import analyze_sectors, get_sector
+from scanner.advanced import (
+    multi_timeframe_score,
+    find_support_resistance,
+    detect_volume_spike,
+    calculate_position_size,
+)
 
 console = Console()
 
@@ -78,6 +85,12 @@ def cmd_scan(args):
             df = compute_indicators(df)
             ind = get_latest_indicators(df)
             analysis = analyze_stock(ind)
+
+            # Multi-timeframe bonus
+            mtf_bonus, mtf_desc = multi_timeframe_score(df)
+            analysis["net_score"] += mtf_bonus
+            analysis["mtf"] = mtf_desc or ""
+
             analysis["symbol"] = symbol
             analysis["name"] = get_symbol_name(symbol)
             analysis["close"] = ind.get("close", 0)
@@ -88,6 +101,10 @@ def cmd_scan(args):
                 if ind.get("volume_sma_20") and ind["volume_sma_20"] > 0
                 else 0
             )
+            # Volume spike
+            spike = detect_volume_spike(df)
+            analysis["spike"] = f"{spike['volume_ratio']:.1f}x" if spike else ""
+
             results.append(analysis)
         except Exception:
             continue
@@ -114,7 +131,8 @@ def cmd_scan(args):
         table.add_column("RSI", justify="right", width=5)
         table.add_column("ADX", justify="right", width=5)
         table.add_column("Vol", justify="right", width=6)
-        table.add_column("Key Reasons", width=45)
+        table.add_column("⚡", width=5)
+        table.add_column("Key Reasons", width=40)
 
         for i, r in enumerate(buy_results[:top_n], 1):
             top_reasons = "; ".join(r["buy_reasons"][:3])
@@ -128,6 +146,7 @@ def cmd_scan(args):
                 f"{r['rsi']:.0f}" if r["rsi"] else "-",
                 f"{r['adx']:.0f}" if r["adx"] else "-",
                 f"{r['volume_ratio']:.1f}x" if r["volume_ratio"] else "-",
+                Text(r.get("spike", ""), style="yellow bold") if r.get("spike") else Text(""),
                 top_reasons,
             )
         console.print(table)
@@ -217,7 +236,150 @@ def cmd_check(args):
         for r in analysis["sell_reasons"]:
             console.print(f"  [red]•[/red] {r}")
 
+    # ── Multi-timeframe confirmation ──
+    mtf_score, mtf_desc = multi_timeframe_score(df)
+    if mtf_desc:
+        mtf_style = "green" if mtf_score > 0 else ("red" if mtf_score < 0 else "yellow")
+        console.print(f"\n[bold]📊 Multi-Timeframe:[/bold] [{mtf_style}]{mtf_desc} ({mtf_score:+d})[/{mtf_style}]")
+
+    # ── Support / Resistance levels ──
+    sr = find_support_resistance(df)
+    if sr["support"] or sr["resistance"]:
+        console.print("\n[bold]📐 Support / Resistance:[/bold]")
+        if sr["resistance"]:
+            res_str = " → ".join(f"RM {r:.3f}" for r in sr["resistance"])
+            console.print(f"  [red]Resistance:[/red] {res_str}")
+        if sr["support"]:
+            sup_str = " → ".join(f"RM {s:.3f}" for s in sr["support"])
+            console.print(f"  [green]Support:[/green]    {sup_str}")
+
+    # ── Volume spike detection ──
+    spike = detect_volume_spike(df)
+    if spike:
+        console.print(
+            f"\n[bold yellow]⚡ Volume Spike:[/bold yellow] {spike['volume_ratio']:.1f}x average "
+            f"| {spike['type']} | Price {spike['price_change']:+.1f}%"
+        )
+
+    # ── Risk sizing ──
+    capital = getattr(args, 'capital', 10000)
+    sizing = calculate_position_size(capital, ind["close"])
+    if sizing["lots"] > 0:
+        console.print(
+            f"\n[bold]💰 Position Size[/bold] (capital RM {capital:,.0f}):\n"
+            f"  Buy [bold]{sizing['lots']} lots[/bold] ({sizing['shares']} shares) "
+            f"= RM {sizing['amount']:,.2f} ({sizing['pct_of_capital']:.1f}% of capital)\n"
+            f"  Risk: RM {sizing['risk_amount']:,.2f} if stop-loss hits"
+        )
+
+    # ── Sector info ──
+    sector = get_sector(symbol)
+    shariah_label = "☪ Shariah" if is_shariah(symbol) else "Non-Shariah"
+    console.print(f"\n[dim]Sector: {sector} | {shariah_label}[/dim]")
+
     console.print()
+
+
+def cmd_sector(args):
+    """Show sector rotation — which sectors are hot/cold."""
+    print_banner()
+    shariah = args.shariah
+    label = "Shariah-compliant" if shariah else "all"
+    console.print(f"\n[bold]Analyzing {label} sector momentum...[/bold]\n")
+
+    symbols = get_all_symbols(shariah_only=shariah)
+    data = fetch_bulk_data(symbols, period="1y", delay=0.2)
+    console.print(f"\n[green]✓[/green] Analyzed [bold]{len(data)}[/bold] stocks\n")
+
+    sectors = analyze_sectors(data)
+
+    table = Table(
+        title="🔄 Sector Rotation",
+        box=box.SIMPLE_HEAVY,
+        show_lines=True,
+    )
+    table.add_column("Rank", style="dim", width=4)
+    table.add_column("Sector", width=14)
+    table.add_column("Trend", width=12)
+    table.add_column("Avg Score", justify="right", width=9)
+    table.add_column("1M Chg", justify="right", width=8)
+    table.add_column("RSI", justify="right", width=5)
+    table.add_column("Stocks", justify="right", width=6)
+    table.add_column("BUY", justify="right", style="green", width=4)
+    table.add_column("SELL", justify="right", style="red", width=4)
+    table.add_column("Top Pick", width=25)
+
+    for i, s in enumerate(sectors, 1):
+        pct_style = "green" if s["avg_pct_1m"] > 0 else "red"
+        top = s["top_stock"]
+        top_label = f"{top['symbol']} ({top['net_score']:+d})"
+        table.add_row(
+            str(i),
+            s["sector"],
+            s["trend"],
+            f"{s['avg_score']:.0f}",
+            Text(f"{s['avg_pct_1m']:+.1f}%", style=pct_style),
+            f"{s['avg_rsi']:.0f}",
+            str(s["stock_count"]),
+            str(s["buy_signals"]),
+            str(s["sell_signals"]),
+            top_label,
+        )
+
+    console.print(table)
+    console.print("\n[dim]🟢 HOT = Strong sector momentum | 🔴 COLD = Avoid or wait[/dim]\n")
+
+
+def cmd_spike(args):
+    """Detect unusual volume spikes across all stocks."""
+    print_banner()
+    shariah = args.shariah
+    threshold = args.threshold
+    console.print(f"\n[bold]Scanning for volume spikes (>{threshold}x average)...[/bold]\n")
+
+    symbols = get_all_symbols(shariah_only=shariah)
+    data = fetch_bulk_data(symbols, period="3mo", delay=0.2)
+
+    spikes = []
+    for symbol, df in data.items():
+        spike = detect_volume_spike(df, threshold=threshold)
+        if spike:
+            spike["symbol"] = symbol
+            spike["name"] = get_symbol_name(symbol)
+            spike["close"] = df["Close"].iloc[-1]
+            spikes.append(spike)
+
+    spikes.sort(key=lambda x: x["volume_ratio"], reverse=True)
+
+    if not spikes:
+        console.print("[yellow]No volume spikes detected today.[/yellow]")
+        return
+
+    table = Table(
+        title=f"⚡ Volume Spikes (>{threshold}x avg)",
+        box=box.SIMPLE_HEAVY,
+        show_lines=True,
+    )
+    table.add_column("Symbol", style="cyan", width=10)
+    table.add_column("Name", width=22)
+    table.add_column("Price", justify="right", width=8)
+    table.add_column("Vol Ratio", justify="right", width=9)
+    table.add_column("Price Chg", justify="right", width=9)
+    table.add_column("Type", width=18)
+
+    for s in spikes:
+        pct_style = "green" if s["price_change"] > 0 else "red"
+        table.add_row(
+            s["symbol"],
+            s["name"][:22],
+            f"{s['close']:.2f}",
+            f"{s['volume_ratio']:.1f}x",
+            Text(f"{s['price_change']:+.1f}%", style=pct_style),
+            s["type"],
+        )
+
+    console.print(table)
+    console.print(f"\n[dim]Found {len(spikes)} stocks with unusual volume[/dim]\n")
 
 
 def cmd_backtest(args):
@@ -232,9 +394,10 @@ def cmd_backtest(args):
     shariah = args.shariah
 
     sl_text = f", stop-loss {stop_loss}%" if stop_loss is not None else ""
+    trailing_text = " (trailing)" if args.trailing_stop and stop_loss else ""
     price_text = f", RM {min_price:.2f}-{max_price:.2f}" if max_price > 0 else f", min RM {min_price:.2f}"
     shariah_text = ", Shariah only ☪" if shariah else ""
-    console.print(f"\n[bold]Running backtest: {days} trading days, top {top_n} picks, scan every {interval} days{sl_text}{price_text}{shariah_text}[/bold]\n")
+    console.print(f"\n[bold]Running backtest: {days} trading days, top {top_n} picks, scan every {interval} days{sl_text}{trailing_text}{price_text}{shariah_text}[/bold]\n")
 
     symbols = get_all_symbols(shariah_only=shariah)
 
@@ -245,7 +408,7 @@ def cmd_backtest(args):
     console.print(f"\n[green]✓[/green] Loaded data for [bold]{len(data)}[/bold] stocks\n")
 
     from scanner.symbols import SYMBOLS as symbol_names
-    result = backtest(data, symbol_names, lookback_days=days, top_n=top_n, scan_interval=interval, stop_loss_pct=stop_loss, min_price=min_price, max_price=max_price)
+    result = backtest(data, symbol_names, lookback_days=days, top_n=top_n, scan_interval=interval, stop_loss_pct=stop_loss, min_price=min_price, max_price=max_price, trailing_stop=args.trailing_stop)
     print_backtest_results(result)
 
 
@@ -423,6 +586,7 @@ def main():
     # check
     check_parser = subparsers.add_parser("check", help="Check a specific stock in detail")
     check_parser.add_argument("symbol", help="Stock symbol (e.g., 1155.KL or 1155)")
+    check_parser.add_argument("--capital", type=float, default=10000, help="Your trading capital for position sizing (default: RM 10,000)")
     check_parser.set_defaults(func=cmd_check)
 
     # backtest
@@ -431,6 +595,7 @@ def main():
     bt_parser.add_argument("--top", type=int, default=10, help="Max stocks to buy per scan (default: 10)")
     bt_parser.add_argument("--interval", type=int, default=5, help="Scan every N trading days (default: 5 = weekly)")
     bt_parser.add_argument("--stop-loss", type=float, default=-10.0, help="Stop-loss %% (default: -10.0, use 0 to disable)")
+    bt_parser.add_argument("--trailing-stop", action="store_true", help="Use trailing stop-loss (tracks highest price)")
     bt_parser.add_argument("--min-price", type=float, default=0.50, help="Minimum stock price (default: 0.50)")
     bt_parser.add_argument("--max-price", type=float, default=0.0, help="Maximum stock price (default: 0 = no limit)")
     bt_parser.add_argument("--shariah", action="store_true", help="Shariah-compliant stocks only")
@@ -460,6 +625,17 @@ def main():
     search_parser = subparsers.add_parser("search", help="Search for a stock")
     search_parser.add_argument("query", help="Search query (name or code)")
     search_parser.set_defaults(func=cmd_search)
+
+    # sector
+    sector_parser = subparsers.add_parser("sector", help="Show sector rotation (hot/cold sectors)")
+    sector_parser.add_argument("--shariah", action="store_true", help="Shariah-compliant stocks only")
+    sector_parser.set_defaults(func=cmd_sector)
+
+    # spike
+    spike_parser = subparsers.add_parser("spike", help="Detect unusual volume spikes")
+    spike_parser.add_argument("--shariah", action="store_true", help="Shariah-compliant stocks only")
+    spike_parser.add_argument("--threshold", type=float, default=2.5, help="Volume spike threshold (default: 2.5x)")
+    spike_parser.set_defaults(func=cmd_spike)
 
     args = parser.parse_args()
 

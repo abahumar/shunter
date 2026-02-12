@@ -1,0 +1,31 @@
+name: Telegram Bot Listener
+
+on:
+  schedule:
+    # Check for commands every 15 minutes during market hours (8 AM - 6 PM MYT / 0-10 UTC)
+    - cron: '*/15 0-10 * * 1-5'
+    # Check every 30 min outside market hours
+    - cron: '0,30 11-23 * * 1-5'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  check-commands:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check for bot commands
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python bot.py --once

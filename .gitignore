@@ -3,5 +3,6 @@ __pycache__/
 *.pyo
 .env
 data/portfolio.json
+data/.bot_offset
 .DS_Store
 *.log
