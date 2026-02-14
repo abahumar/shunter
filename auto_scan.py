@@ -19,6 +19,7 @@ from scanner.signals import analyze_stock
 from scanner.portfolio import get_portfolio
 from scanner.sectors import analyze_sectors
 from scanner.advanced import multi_timeframe_score, detect_volume_spike
+from scanner.signal_tracker import log_signals, update_outcomes, format_outcome_updates
 from scanner.telegram_notify import (
     send_message,
     format_scan_results,
@@ -129,6 +130,16 @@ def main():
     )
     print(f"✓ Found {len(results)} BUY signals")
 
+    # Log signals for tracking
+    logged = log_signals(results)
+    if logged:
+        print(f"📝 Logged {logged} new signals to tracker")
+
+    # Check past signal outcomes
+    outcome_updates = update_outcomes()
+    if outcome_updates:
+        print(f"📊 {len(outcome_updates)} signal outcomes updated")
+
     scan_msg = format_scan_results(results, shariah=args.shariah)
 
     # 1b. Sector rotation summary
@@ -162,7 +173,8 @@ def main():
         print(f"✓ Portfolio checked ({len(statuses)} stocks)")
 
     # 3. Send or print
-    full_msg = scan_msg + sector_msg + spike_msg + sell_msg + portfolio_msg
+    tracker_msg = format_outcome_updates(outcome_updates)
+    full_msg = scan_msg + sector_msg + spike_msg + sell_msg + portfolio_msg + tracker_msg
 
     if args.no_telegram:
         # Strip HTML tags for console output

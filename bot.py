@@ -40,6 +40,7 @@ from scanner.advanced import (
     detect_volume_spike,
     calculate_position_size,
 )
+from scanner.signal_tracker import format_tracker_report, get_recent_signals
 from scanner.telegram_notify import send_message
 
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -351,11 +352,35 @@ def handle_help(chat_id):
         "/check CODE — Check a stock (e.g., /check 5225)\n"
         "/sector — Show sector rotation (hot/cold)\n"
         "/spike — Detect unusual volume spikes\n"
+        "/tracker — Signal tracker performance (7/14/30d)\n"
         "/portfolio — Check portfolio sell alerts\n"
         "/help — Show this message\n\n"
-        "💡 <i>Scan takes 1-2 min to analyze 140+ stocks</i>"
+        "💡 <i>Scan takes 1-2 min to analyze 120+ stocks</i>"
     )
     reply(chat_id, msg)
+
+
+def handle_tracker(chat_id):
+    """Show signal tracker performance report."""
+    report = format_tracker_report()
+
+    # Append recent signals
+    recent = get_recent_signals(5)
+    if recent:
+        report += "<b>🕐 Recent Signals</b>\n"
+        for s in recent:
+            outcomes = []
+            for key in ("7d", "14d", "30d"):
+                if key in s["outcomes"]:
+                    pnl = s["outcomes"][key]["pnl_pct"]
+                    emoji = "🟢" if pnl >= 0 else "🔴"
+                    outcomes.append(f"{key}:{emoji}{pnl:+.1f}%")
+                else:
+                    outcomes.append(f"{key}:⏳")
+            report += f"  <b>{s['symbol']}</b> RM {s['entry_price']:.2f} ({s['date']})\n"
+            report += f"    {' | '.join(outcomes)}\n"
+
+    reply(chat_id, report)
 
 
 # ──────────────────────────────────────────────
@@ -367,6 +392,7 @@ COMMANDS = {
     "/check": lambda cid, args: handle_check(cid, args),
     "/sector": lambda cid, _: handle_sector(cid),
     "/spike": lambda cid, _: handle_spike(cid),
+    "/tracker": lambda cid, _: handle_tracker(cid),
     "/portfolio": lambda cid, _: handle_portfolio(cid),
     "/help": lambda cid, _: handle_help(cid),
     "/start": lambda cid, _: handle_help(cid),
