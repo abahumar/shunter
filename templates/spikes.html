@@ -1,0 +1,49 @@
+<div class="space-y-4">
+    <h2 class="text-2xl font-bold text-white">Volume Spikes</h2>
+    <p class="text-sm text-gray-500">Stocks with unusual volume (&gt;2.5x average) — possible institutional activity</p>
+
+    {% if spikes %}
+    <div class="card overflow-hidden">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="text-gray-500 text-xs uppercase bg-surface-100">
+                    <th class="text-left p-3">Symbol</th>
+                    <th class="text-left p-3">Name</th>
+                    <th class="text-right p-3">Price (RM)</th>
+                    <th class="text-right p-3">Vol Ratio</th>
+                    <th class="text-right p-3">Price Change</th>
+                    <th class="text-left p-3">Type</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in spikes %}
+                <tr class="border-t border-surface-100 hover:bg-surface-100 cursor-pointer"
+                    hx-get="/stock/{{ s.symbol }}" hx-target="#main-content" hx-push-url="true">
+                    <td class="p-3 text-accent font-mono">{{ s.symbol }}</td>
+                    <td class="p-3">{{ s.name }}</td>
+                    <td class="p-3 text-right font-mono">{{ "%.2f"|format(s.close) }}</td>
+                    <td class="p-3 text-right font-mono font-bold text-yellow-400">{{ "%.1f"|format(s.spike.volume_ratio) }}x</td>
+                    <td class="p-3 text-right font-mono {% if s.spike.price_change > 0 %}text-green-400{% else %}text-red-400{% endif %}">
+                        {{ "%+.1f"|format(s.spike.price_change) }}%
+                    </td>
+                    <td class="p-3">
+                        {% if 'Bullish' in s.spike.type %}
+                        <span class="text-green-400">{{ s.spike.type }}</span>
+                        {% else %}
+                        <span class="text-red-400">{{ s.spike.type }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <p class="text-xs text-gray-600">Found {{ spikes|length }} stocks with unusual volume</p>
+    {% else %}
+    <div class="card p-12 text-center">
+        <p class="text-gray-400">No volume spikes detected. Run a scan first.</p>
+        <button hx-get="/scan" hx-target="#main-content" hx-push-url="/scan"
+                class="mt-4 px-4 py-2 bg-accent text-white rounded-lg text-sm">🔍 Run Scan</button>
+    </div>
+    {% endif %}
+</div>

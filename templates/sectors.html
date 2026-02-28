@@ -1,0 +1,64 @@
+<div class="space-y-4">
+    <h2 class="text-2xl font-bold text-white">Sector Rotation</h2>
+
+    {% if sectors %}
+    <div class="card overflow-hidden">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="text-gray-500 text-xs uppercase bg-surface-100">
+                    <th class="text-left p-3">#</th>
+                    <th class="text-left p-3">Sector</th>
+                    <th class="text-left p-3">Trend</th>
+                    <th class="text-right p-3">Avg Score</th>
+                    <th class="text-right p-3">1M Change</th>
+                    <th class="text-right p-3">Avg RSI</th>
+                    <th class="text-right p-3">Stocks</th>
+                    <th class="text-right p-3 text-green-400">BUY</th>
+                    <th class="text-right p-3 text-red-400">SELL</th>
+                    <th class="text-left p-3">Top Pick</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in sectors %}
+                <tr class="border-t border-surface-100 hover:bg-surface-100">
+                    <td class="p-3 text-gray-500">{{ loop.index }}</td>
+                    <td class="p-3 font-medium text-white">{{ s.sector }}</td>
+                    <td class="p-3">
+                        {% if 'HOT' in s.trend %}
+                        <span class="text-green-400 font-semibold">{{ s.trend }}</span>
+                        {% elif 'WARM' in s.trend %}
+                        <span class="text-yellow-400">{{ s.trend }}</span>
+                        {% elif 'COLD' in s.trend %}
+                        <span class="text-red-400">{{ s.trend }}</span>
+                        {% else %}
+                        <span class="text-gray-500">{{ s.trend }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="p-3 text-right font-mono">{{ "%.0f"|format(s.avg_score) }}</td>
+                    <td class="p-3 text-right font-mono {% if s.avg_pct_1m > 0 %}text-green-400{% else %}text-red-400{% endif %}">
+                        {{ "%+.1f"|format(s.avg_pct_1m) }}%
+                    </td>
+                    <td class="p-3 text-right font-mono">{{ "%.0f"|format(s.avg_rsi) }}</td>
+                    <td class="p-3 text-right">{{ s.stock_count }}</td>
+                    <td class="p-3 text-right text-green-400">{{ s.buy_signals }}</td>
+                    <td class="p-3 text-right text-red-400">{{ s.sell_signals }}</td>
+                    <td class="p-3">
+                        <a hx-get="/stock/{{ s.top_stock.symbol }}" hx-target="#main-content" hx-push-url="true"
+                           class="text-accent hover:underline cursor-pointer font-mono text-xs">
+                            {{ s.top_stock.symbol }} ({{ "%+d"|format(s.top_stock.net_score) }})
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <p class="text-xs text-gray-600">🟢 HOT = Strong sector momentum &bull; 🔴 COLD = Weak / avoid</p>
+    {% else %}
+    <div class="card p-12 text-center">
+        <p class="text-gray-400">Run a scan first to see sector data.</p>
+        <button hx-get="/scan" hx-target="#main-content" hx-push-url="/scan"
+                class="mt-4 px-4 py-2 bg-accent text-white rounded-lg text-sm">🔍 Run Scan</button>
+    </div>
+    {% endif %}
+</div>

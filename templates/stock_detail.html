@@ -1,0 +1,216 @@
+{% if error is defined and error %}
+<div class="card p-12 text-center">
+    <p class="text-red-400">{{ error }}</p>
+    <a href="/scan" hx-get="/scan" hx-target="#main-content" hx-push-url="true"
+       class="text-accent hover:underline text-sm mt-4 inline-block">Back to Scanner</a>
+</div>
+{% elif detail %}
+{% set d = detail %}
+{% set a = d.analysis %}
+{% set ind = d.indicators %}
+
+<div class="space-y-4">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <a href="/scan" hx-get="/scan" hx-target="#main-content" hx-push-url="true"
+               class="text-gray-500 text-xs hover:text-accent">&larr; Back to Scanner</a>
+            <h2 class="text-2xl font-bold text-white mt-1">
+                {{ d.name }}
+                <span class="text-accent font-mono text-lg">{{ d.symbol }}</span>
+            </h2>
+            <p class="text-gray-500 text-sm">{{ d.sector }} &bull; {{ "☪ Shariah" if d.shariah else "Non-Shariah" }}</p>
+        </div>
+        <div class="text-right">
+            <p class="text-3xl font-bold text-white">RM {{ "%.2f"|format(d.close) }}</p>
+            <span class="px-3 py-1 rounded text-sm font-bold mt-1 inline-block
+                {% if a.signal == 'STRONG BUY' %}signal-strong-buy
+                {% elif a.signal == 'BUY' %}signal-buy
+                {% elif a.signal == 'WATCH' %}signal-watch
+                {% elif a.signal == 'SELL' %}signal-sell
+                {% elif a.signal == 'STRONG SELL' %}signal-strong-sell
+                {% else %}signal-hold{% endif %}">
+                {{ a.signal }} ({{ a.net_score }})
+            </span>
+        </div>
+    </div>
+
+    <!-- Chart -->
+    <div class="card p-4">
+        <div id="stock-chart" style="height: 400px;"></div>
+    </div>
+
+    <!-- Info Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+        <!-- Indicators -->
+        <div class="card p-4">
+            <h3 class="text-sm font-semibold text-gray-400 uppercase mb-3">Indicators</h3>
+            <div class="space-y-2 text-sm">
+                <div class="flex justify-between"><span class="text-gray-500">EMA 20</span><span class="font-mono">{{ "%.3f"|format(ind.ema_20) if ind.ema_20 else "-" }}</span></div>
+                <div class="flex justify-between"><span class="text-gray-500">EMA 50</span><span class="font-mono">{{ "%.3f"|format(ind.ema_50) if ind.ema_50 else "-" }}</span></div>
+                <div class="flex justify-between"><span class="text-gray-500">EMA 200</span><span class="font-mono">{{ "%.3f"|format(ind.ema_200) if ind.ema_200 else "-" }}</span></div>
+                <hr class="border-surface-100">
+                <div class="flex justify-between"><span class="text-gray-500">RSI (14)</span><span class="font-mono {% if ind.rsi and ind.rsi > 70 %}text-red-400{% elif ind.rsi and ind.rsi < 30 %}text-green-400{% endif %}">{{ "%.1f"|format(ind.rsi) if ind.rsi else "-" }}</span></div>
+                <div class="flex justify-between"><span class="text-gray-500">MACD Hist</span><span class="font-mono {% if ind.macd_hist and ind.macd_hist > 0 %}text-green-400{% elif ind.macd_hist and ind.macd_hist < 0 %}text-red-400{% endif %}">{{ "%.4f"|format(ind.macd_hist) if ind.macd_hist else "-" }}</span></div>
+                <div class="flex justify-between"><span class="text-gray-500">ADX</span><span class="font-mono">{{ "%.1f"|format(ind.adx) if ind.adx else "-" }}</span></div>
+                <div class="flex justify-between"><span class="text-gray-500">Volume Ratio</span><span class="font-mono">{{ "%.1f"|format(d.volume_ratio) }}x</span></div>
+                <div class="flex justify-between"><span class="text-gray-500">ATR</span><span class="font-mono">{{ "%.4f"|format(ind.atr) if ind.atr else "-" }}</span></div>
+                <hr class="border-surface-100">
+                <div class="flex justify-between"><span class="text-gray-500">52w High</span><span class="font-mono">{{ "%.3f"|format(ind.high_52w) if ind.high_52w else "-" }}</span></div>
+                <div class="flex justify-between"><span class="text-gray-500">52w Low</span><span class="font-mono">{{ "%.3f"|format(ind.low_52w) if ind.low_52w else "-" }}</span></div>
+            </div>
+        </div>
+
+        <!-- Signals -->
+        <div class="card p-4">
+            <h3 class="text-sm font-semibold text-gray-400 uppercase mb-3">Signals</h3>
+            {% if a.buy_reasons %}
+            <div class="mb-3">
+                <p class="text-xs text-green-500 font-semibold mb-1">BULLISH</p>
+                {% for r in a.buy_reasons %}
+                <p class="text-sm text-gray-300 flex items-start gap-1.5 mb-1">
+                    <span class="text-green-400 mt-0.5">&#10003;</span> {{ r }}
+                </p>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% if a.sell_reasons %}
+            <div class="mb-3">
+                <p class="text-xs text-red-500 font-semibold mb-1">BEARISH</p>
+                {% for r in a.sell_reasons %}
+                <p class="text-sm text-gray-300 flex items-start gap-1.5 mb-1">
+                    <span class="text-red-400 mt-0.5">&#10007;</span> {{ r }}
+                </p>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if d.mtf.desc %}
+            <div class="mt-3 pt-3 border-t border-surface-100">
+                <p class="text-xs text-gray-500 font-semibold mb-1">MULTI-TIMEFRAME</p>
+                <p class="text-sm {% if d.mtf.score > 0 %}text-green-400{% elif d.mtf.score < 0 %}text-red-400{% else %}text-yellow-400{% endif %}">
+                    {{ d.mtf.desc }} ({{ "%+d"|format(d.mtf.score) }})
+                </p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- S/R + Sizing -->
+        <div class="card p-4 space-y-4">
+            <!-- Support/Resistance -->
+            {% set sr = d.support_resistance %}
+            {% if sr.support or sr.resistance %}
+            <div>
+                <h3 class="text-sm font-semibold text-gray-400 uppercase mb-2">Support / Resistance</h3>
+                {% if sr.resistance %}
+                <div class="mb-2">
+                    <p class="text-xs text-red-500 mb-1">Resistance</p>
+                    {% for r in sr.resistance %}
+                    <span class="inline-block px-2 py-0.5 bg-red-900/30 text-red-400 rounded text-xs font-mono mr-1 mb-1">RM {{ "%.3f"|format(r) }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% if sr.support %}
+                <div>
+                    <p class="text-xs text-green-500 mb-1">Support</p>
+                    {% for s in sr.support %}
+                    <span class="inline-block px-2 py-0.5 bg-green-900/30 text-green-400 rounded text-xs font-mono mr-1 mb-1">RM {{ "%.3f"|format(s) }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            <!-- Position Sizing -->
+            {% set sz = d.sizing %}
+            {% if sz.lots > 0 %}
+            <div>
+                <h3 class="text-sm font-semibold text-gray-400 uppercase mb-2">Position Size</h3>
+                <p class="text-xs text-gray-500 mb-2">Capital: RM 10,000</p>
+                <div class="space-y-1 text-sm">
+                    <div class="flex justify-between"><span class="text-gray-500">Lots</span><span class="font-mono font-bold text-white">{{ sz.lots }} ({{ sz.shares }} shares)</span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">Amount</span><span class="font-mono">RM {{ "%.2f"|format(sz.amount) }}</span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">% of Capital</span><span class="font-mono">{{ "%.1f"|format(sz.pct_of_capital) }}%</span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">Risk (10% SL)</span><span class="font-mono text-red-400">RM {{ "%.2f"|format(sz.risk_amount) }}</span></div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Volume Spike -->
+            {% if d.spike %}
+            <div class="pt-3 border-t border-surface-100">
+                <p class="text-xs text-yellow-500 font-semibold mb-1">VOLUME SPIKE</p>
+                <p class="text-sm text-yellow-400 font-mono">{{ "%.1f"|format(d.spike.volume_ratio) }}x avg &bull; {{ d.spike.type }}</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Chart initialization -->
+<script>
+(function() {
+    const container = document.getElementById('stock-chart');
+    if (!container) return;
+
+    const chart = LightweightCharts.createChart(container, {
+        layout: { background: { color: '#1e293b' }, textColor: '#94a3b8' },
+        grid: { vertLines: { color: '#334155' }, horzLines: { color: '#334155' } },
+        crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+        rightPriceScale: { borderColor: '#334155' },
+        timeScale: { borderColor: '#334155', timeVisible: false },
+    });
+
+    const candleSeries = chart.addCandlestickSeries({
+        upColor: '#22c55e', downColor: '#ef4444',
+        borderUpColor: '#22c55e', borderDownColor: '#ef4444',
+        wickUpColor: '#22c55e', wickDownColor: '#ef4444',
+    });
+
+    const volumeSeries = chart.addHistogramSeries({
+        priceFormat: { type: 'volume' },
+        priceScaleId: 'volume',
+    });
+    chart.priceScale('volume').applyOptions({
+        scaleMargins: { top: 0.8, bottom: 0 },
+    });
+
+    fetch('/api/chart/{{ d.symbol }}')
+        .then(r => r.json())
+        .then(data => {
+            candleSeries.setData(data.candles);
+            volumeSeries.setData(data.volume);
+
+            if (data.ema20.length) {
+                chart.addLineSeries({ color: '#f59e0b', lineWidth: 1, title: 'EMA20' }).setData(data.ema20);
+            }
+            if (data.ema50.length) {
+                chart.addLineSeries({ color: '#3b82f6', lineWidth: 1, title: 'EMA50' }).setData(data.ema50);
+            }
+            if (data.ema200.length) {
+                chart.addLineSeries({ color: '#a855f7', lineWidth: 1, title: 'EMA200' }).setData(data.ema200);
+            }
+            if (data.bb_upper.length) {
+                chart.addLineSeries({ color: 'rgba(156,163,175,0.3)', lineWidth: 1, lineStyle: 2 }).setData(data.bb_upper);
+                chart.addLineSeries({ color: 'rgba(156,163,175,0.3)', lineWidth: 1, lineStyle: 2 }).setData(data.bb_lower);
+            }
+
+            chart.timeScale().fitContent();
+        });
+
+    // Resize handler
+    const ro = new ResizeObserver(() => {
+        chart.applyOptions({ width: container.clientWidth });
+    });
+    ro.observe(container);
+
+    // Cleanup on HTMX navigation
+    document.body.addEventListener('htmx:beforeSwap', function cleanup() {
+        ro.disconnect();
+        chart.remove();
+        document.body.removeEventListener('htmx:beforeSwap', cleanup);
+    });
+})();
+</script>
+{% endif %}

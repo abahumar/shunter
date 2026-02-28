@@ -1,0 +1,94 @@
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <h2 class="text-2xl font-bold text-white">Dashboard</h2>
+        <button hx-get="/scan" hx-target="#main-content" hx-push-url="/scan"
+                class="px-4 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:bg-blue-600 transition">
+            🔍 Run Scan
+        </button>
+    </div>
+
+    {% if scan %}
+    {% set results = scan.results %}
+    {% set buy_count = results|selectattr("signal", "in", ["STRONG BUY", "BUY"])|list|length %}
+    {% set watch_count = results|selectattr("signal", "equalto", "WATCH")|list|length %}
+    {% set sell_count = results|selectattr("signal", "in", ["SELL", "STRONG SELL"])|list|length %}
+
+    <!-- Summary Cards -->
+    <div class="grid grid-cols-4 gap-4">
+        <div class="card p-4">
+            <p class="text-xs text-gray-500 uppercase tracking-wide">Total Scanned</p>
+            <p class="text-3xl font-bold text-white mt-1">{{ scan.total }}</p>
+        </div>
+        <div class="card p-4">
+            <p class="text-xs text-gray-500 uppercase tracking-wide">Buy Signals</p>
+            <p class="text-3xl font-bold text-green-400 mt-1">{{ buy_count }}</p>
+        </div>
+        <div class="card p-4">
+            <p class="text-xs text-gray-500 uppercase tracking-wide">Watch</p>
+            <p class="text-3xl font-bold text-yellow-400 mt-1">{{ watch_count }}</p>
+        </div>
+        <div class="card p-4">
+            <p class="text-xs text-gray-500 uppercase tracking-wide">Sell Signals</p>
+            <p class="text-3xl font-bold text-red-400 mt-1">{{ sell_count }}</p>
+        </div>
+    </div>
+
+    <!-- Top 5 Picks -->
+    <div class="card p-4">
+        <h3 class="text-lg font-semibold text-white mb-3">Top 5 Picks</h3>
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="text-gray-500 text-xs uppercase">
+                    <th class="text-left pb-2">#</th>
+                    <th class="text-left pb-2">Symbol</th>
+                    <th class="text-left pb-2">Name</th>
+                    <th class="text-right pb-2">Price</th>
+                    <th class="text-center pb-2">Signal</th>
+                    <th class="text-right pb-2">Score</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in results[:5] %}
+                <tr class="border-t border-surface-100 hover:bg-surface-100 cursor-pointer"
+                    hx-get="/stock/{{ r.symbol }}" hx-target="#main-content" hx-push-url="true">
+                    <td class="py-2 text-gray-500">{{ loop.index }}</td>
+                    <td class="py-2 text-accent font-mono">{{ r.symbol }}</td>
+                    <td class="py-2">{{ r.name }}</td>
+                    <td class="py-2 text-right">{{ "%.2f"|format(r.close) }}</td>
+                    <td class="py-2 text-center">
+                        <span class="px-2 py-0.5 rounded text-xs font-bold
+                            {% if r.signal == 'STRONG BUY' %}signal-strong-buy
+                            {% elif r.signal == 'BUY' %}signal-buy
+                            {% elif r.signal == 'WATCH' %}signal-watch
+                            {% elif r.signal == 'SELL' %}signal-sell
+                            {% elif r.signal == 'STRONG SELL' %}signal-strong-sell
+                            {% else %}signal-hold{% endif %}">
+                            {{ r.signal }}
+                        </span>
+                    </td>
+                    <td class="py-2 text-right font-mono">{{ r.net_score }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Last Scan Info -->
+    <p class="text-xs text-gray-600">
+        Last scan: {{ scan.time.strftime('%d %b %Y, %I:%M %p') }} &bull;
+        {{ scan.total }} stocks analyzed
+    </p>
+
+    {% else %}
+    <!-- No scan data yet -->
+    <div class="card p-12 text-center">
+        <p class="text-4xl mb-4">🎯</p>
+        <h3 class="text-xl font-semibold text-white mb-2">Welcome to Stock Hunter</h3>
+        <p class="text-gray-400 mb-6">Run your first scan to see BUY/SELL signals across Bursa Malaysia</p>
+        <button hx-get="/scan" hx-target="#main-content" hx-push-url="/scan"
+                class="px-6 py-3 bg-accent text-white rounded-lg font-medium hover:bg-blue-600 transition">
+            🔍 Start Scanning
+        </button>
+    </div>
+    {% endif %}
+</div>

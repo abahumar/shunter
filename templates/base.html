@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Hunter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        surface: { DEFAULT: '#0f172a', 50: '#1e293b', 100: '#334155', 200: '#475569' },
+                        accent: '#3b82f6',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background: #0f172a; }
+        .nav-link { transition: all 0.15s; }
+        .nav-link:hover, .nav-link.active { background: #1e293b; border-left: 3px solid #3b82f6; }
+        .signal-strong-buy { background: #166534; color: #fff; }
+        .signal-buy { color: #22c55e; }
+        .signal-watch { color: #eab308; }
+        .signal-hold { color: #94a3b8; }
+        .signal-sell { color: #ef4444; }
+        .signal-strong-sell { background: #991b1b; color: #fff; }
+        .htmx-request .loading-spinner { display: block; }
+        .htmx-request .content-body { opacity: 0.4; }
+        .loading-spinner { display: none; }
+        .card { background: #1e293b; border: 1px solid #334155; border-radius: 0.5rem; }
+    </style>
+</head>
+<body class="text-gray-200 min-h-screen flex">
+
+    <!-- Sidebar -->
+    <nav class="w-56 bg-surface-50 border-r border-surface-100 flex flex-col fixed h-full">
+        <div class="p-4 border-b border-surface-100">
+            <h1 class="text-lg font-bold text-white flex items-center gap-2">
+                <span class="text-2xl">🎯</span> Stock Hunter
+            </h1>
+            <p class="text-xs text-gray-500 mt-1">Bursa Malaysia Scanner</p>
+        </div>
+        <div class="flex-1 py-4">
+            <a href="/" hx-get="/" hx-target="#main-content" hx-push-url="true"
+               class="nav-link block px-4 py-2.5 text-sm text-gray-300 hover:text-white" id="nav-dashboard">
+                📊 Dashboard
+            </a>
+            <a href="/scan" hx-get="/scan" hx-target="#main-content" hx-push-url="true"
+               class="nav-link block px-4 py-2.5 text-sm text-gray-300 hover:text-white" id="nav-scanner">
+                🔍 Scanner
+            </a>
+            <a href="/sectors" hx-get="/sectors" hx-target="#main-content" hx-push-url="true"
+               class="nav-link block px-4 py-2.5 text-sm text-gray-300 hover:text-white" id="nav-sectors">
+                🔄 Sectors
+            </a>
+            <a href="/spikes" hx-get="/spikes" hx-target="#main-content" hx-push-url="true"
+               class="nav-link block px-4 py-2.5 text-sm text-gray-300 hover:text-white" id="nav-spikes">
+                ⚡ Volume Spikes
+            </a>
+            <a href="/portfolio" hx-get="/portfolio" hx-target="#main-content" hx-push-url="true"
+               class="nav-link block px-4 py-2.5 text-sm text-gray-300 hover:text-white" id="nav-portfolio">
+                💼 Portfolio
+            </a>
+            <a href="/tracker" hx-get="/tracker" hx-target="#main-content" hx-push-url="true"
+               class="nav-link block px-4 py-2.5 text-sm text-gray-300 hover:text-white" id="nav-tracker">
+                📈 Signal Tracker
+            </a>
+        </div>
+        <div class="p-4 border-t border-surface-100 text-xs text-gray-600">
+            Data from Yahoo Finance
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="ml-56 flex-1 min-h-screen">
+        <div class="p-6">
+            <!-- Loading spinner -->
+            <div class="loading-spinner flex justify-center py-20">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
+            </div>
+            <!-- Content -->
+            <div id="main-content" class="content-body">
+                {% if content_template %}
+                    {% include content_template %}
+                {% endif %}
+            </div>
+        </div>
+    </main>
+
+    <!-- HTMX nav active state + chart cleanup -->
+    <script src="/static/app.js"></script>
+</body>
+</html>
