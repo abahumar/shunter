@@ -9,7 +9,7 @@ import math
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify
 
-from scanner.symbols import get_all_symbols, get_symbol_name, search_symbol, is_shariah, SYMBOLS
+from scanner.symbols import get_all_symbols, get_symbol_name, search_symbol, SYMBOLS
 from scanner.data_fetcher import fetch_stock_data, fetch_bulk_data
 from scanner.indicators import compute_indicators, get_latest_indicators
 from scanner.signals import analyze_stock
@@ -59,15 +59,15 @@ def _render(template, request, **kwargs):
 
 # ── Scan engine (shared by dashboard and scanner page) ──
 
-def _run_scan(shariah=False, force=False):
+def _run_scan(force=False):
     """Run full market scan, using cache if available."""
-    cache_key = f"scan_{'shariah' if shariah else 'all'}"
+    cache_key = "scan_all"
     if not force:
         cached = _cache_get(cache_key)
         if cached:
             return cached
 
-    symbols = get_all_symbols(shariah_only=shariah)
+    symbols = get_all_symbols()
 
     # Fetch without Rich progress bar (we're in web context)
     stock_data = {}
@@ -96,7 +96,7 @@ def _run_scan(shariah=False, force=False):
             analysis["close"] = ind.get("close", 0)
             analysis["rsi"] = ind.get("rsi", 0)
             analysis["adx"] = ind.get("adx", 0)
-            analysis["shariah"] = is_shariah(symbol)
+            analysis["shariah"] = True
             analysis["sector"] = get_sector(symbol)
 
             vol_sma = ind.get("volume_sma_20", 0)
@@ -136,10 +136,9 @@ def dashboard():
 @app.route("/scan")
 def scan():
     """Full scan results page."""
-    shariah = request.args.get("shariah") == "1"
     force = request.args.get("refresh") == "1"
-    scan = _run_scan(shariah=shariah, force=force)
-    return _render("scanner.html", request, scan=scan, shariah=shariah)
+    scan = _run_scan(force=force)
+    return _render("scanner.html", request, scan=scan)
 
 
 @app.route("/stock/<symbol>")
@@ -179,7 +178,7 @@ def stock_detail(symbol):
             "spike": spike,
             "sizing": sizing,
             "sector": get_sector(symbol),
-            "shariah": is_shariah(symbol),
+            "shariah": True,
             "volume_ratio": vol_ratio,
         }
         _cache_set(cache_key, detail, STOCK_TTL)
