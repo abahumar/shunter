@@ -30,7 +30,7 @@
         .signal-hold { color: #94a3b8; }
         .signal-sell { color: #ef4444; }
         .signal-strong-sell { background: #991b1b; color: #fff; }
-        .htmx-request .loading-spinner { display: block; }
+        .htmx-request .loading-spinner { display: flex; }
         .htmx-request .content-body { opacity: 0.4; }
         .loading-spinner { display: none; }
         .card { background: #1e293b; border: 1px solid #334155; border-radius: 0.5rem; }
@@ -80,8 +80,8 @@
     <!-- Main Content -->
     <main class="ml-56 flex-1 min-h-screen">
         <div class="p-6">
-            <!-- Loading spinner -->
-            <div class="loading-spinner flex justify-center py-20">
+            <!-- Loading spinner (shown only during HTMX requests) -->
+            <div class="loading-spinner justify-center py-20">
                 <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
             </div>
             <!-- Content -->
