@@ -209,7 +209,11 @@ def compute_sell_score(ind: dict) -> tuple[int, list[str]]:
 def classify_signal(buy_score: int, sell_score: int) -> str:
     """Classify overall signal as STRONG BUY / BUY / HOLD / SELL / STRONG SELL."""
     net = buy_score + sell_score  # sell_score is already negative
+    return classify_net_score(net)
 
+
+def classify_net_score(net: int) -> str:
+    """Classify signal from a final adjusted net score."""
     if net >= 60:
         return "STRONG BUY"
     elif net >= 35:

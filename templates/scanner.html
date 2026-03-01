@@ -13,6 +13,33 @@
     {% if scan %}
     {% set results = scan.results %}
 
+    <!-- Market Sentiment Banner -->
+    {% if scan.sentiment %}
+    {% set s = scan.sentiment %}
+    <div class="card p-3 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <span class="text-xs text-gray-500 uppercase tracking-wide">Market:</span>
+            <span class="px-2 py-0.5 rounded text-xs font-bold
+                {% if s.trend == 'Bullish' %}bg-green-900/50 text-green-400
+                {% elif s.trend == 'Bearish' %}bg-red-900/50 text-red-400
+                {% else %}bg-yellow-900/50 text-yellow-400{% endif %}">
+                {{ s.trend }}
+            </span>
+            <span class="text-xs text-gray-400">{{ s.description }}</span>
+            {% if s.score_adj != 0 %}
+            <span class="text-xs font-mono {% if s.score_adj > 0 %}text-green-400{% else %}text-red-400{% endif %}">
+                ({{ "%+d"|format(s.score_adj) }} to all scores)
+            </span>
+            {% endif %}
+        </div>
+        <div class="text-xs text-gray-500">
+            {% for reason in s.reasons[:3] %}
+            <span class="mr-2">{{ reason }}</span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Filter buttons -->
     <div class="flex gap-2" id="signal-filters">
         <button onclick="filterSignals('all')" class="filter-btn active px-3 py-1 rounded text-xs font-medium bg-surface-100 text-gray-300">
@@ -27,30 +54,90 @@
         <button onclick="filterSignals('sell')" class="filter-btn px-3 py-1 rounded text-xs font-medium bg-surface-100 text-red-400">
             SELL ({{ results|selectattr("signal", "in", ["SELL", "STRONG SELL"])|list|length }})
         </button>
+        <button onclick="filterSignals('confirmed')" class="filter-btn px-3 py-1 rounded text-xs font-medium bg-surface-100 text-blue-400">
+            ✓ Confirmed ({{ results|selectattr("confirmed", "equalto", true)|list|length }})
+        </button>
     </div>
 
-    <!-- Search -->
-    <div>
+    <!-- Preset Filters -->
+    <div class="flex flex-wrap gap-2">
+        <span class="text-xs text-gray-500 self-center mr-1">Presets:</span>
+        <button onclick="applyPreset('growth')" class="preset-btn px-3 py-1 rounded text-xs font-medium bg-surface-100 text-blue-400 hover:bg-surface-200 transition">
+            📈 Growth
+        </button>
+        <button onclick="applyPreset('dividend')" class="preset-btn px-3 py-1 rounded text-xs font-medium bg-surface-100 text-green-400 hover:bg-surface-200 transition">
+            💰 Dividend
+        </button>
+        <button onclick="applyPreset('momentum')" class="preset-btn px-3 py-1 rounded text-xs font-medium bg-surface-100 text-purple-400 hover:bg-surface-200 transition">
+            🚀 Momentum
+        </button>
+        <button onclick="applyPreset('penny')" class="preset-btn px-3 py-1 rounded text-xs font-medium bg-surface-100 text-yellow-400 hover:bg-surface-200 transition">
+            🪙 Penny (&lt;RM1)
+        </button>
+        <button onclick="applyPreset('clear')" class="preset-btn px-3 py-1 rounded text-xs font-medium bg-surface-100 text-gray-500 hover:bg-surface-200 transition">
+            ✕ Clear
+        </button>
+    </div>
+
+    <!-- Search + Price Filter -->
+    <div class="flex flex-wrap items-center gap-3">
         <input type="text" id="stock-search" placeholder="Search by symbol or name..."
-               onkeyup="searchTable(this.value)"
+               onkeyup="applyFilters()"
                class="w-full md:w-80 px-3 py-2 bg-surface-100 border border-surface-200 rounded-lg text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-accent">
+        <select id="sector-filter" onchange="applyFilters()"
+                class="px-3 py-2 bg-surface-100 border border-surface-200 rounded-lg text-sm text-gray-200 focus:outline-none focus:border-accent">
+            <option value="">All Sectors</option>
+            {% set sectors_list = results|map(attribute='sector')|unique|sort %}
+            {% for s in sectors_list %}
+            {% if s %}<option value="{{ s }}">{{ s }}</option>{% endif %}
+            {% endfor %}
+        </select>
+        <div class="flex items-center gap-2">
+            <span class="text-xs text-gray-500">Price (RM):</span>
+            <input type="number" id="price-min" placeholder="Min" step="0.01" min="0"
+                   onchange="applyFilters()" oninput="applyFilters()"
+                   class="w-24 px-2 py-2 bg-surface-100 border border-surface-200 rounded-lg text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-accent">
+            <span class="text-xs text-gray-500">–</span>
+            <input type="number" id="price-max" placeholder="Max" step="0.01" min="0"
+                   onchange="applyFilters()" oninput="applyFilters()"
+                   class="w-24 px-2 py-2 bg-surface-100 border border-surface-200 rounded-lg text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-accent">
+        </div>
     </div>
 
     <!-- Results Table -->
     <div class="card overflow-hidden">
+        <!-- Pagination controls (top) -->
+        <div id="pagination-top" class="flex items-center justify-between px-3 py-2 bg-surface-100 border-b border-surface-200">
+            <span class="text-xs text-gray-500" id="page-info">Showing all</span>
+            <div class="flex items-center gap-2">
+                <button onclick="prevPage()" id="btn-prev" class="px-2 py-1 rounded text-xs bg-surface-200 text-gray-400 hover:text-white disabled:opacity-30" disabled>← Prev</button>
+                <span class="text-xs text-gray-400" id="page-num">1</span>
+                <button onclick="nextPage()" id="btn-next" class="px-2 py-1 rounded text-xs bg-surface-200 text-gray-400 hover:text-white disabled:opacity-30">Next →</button>
+                <select id="per-page" onchange="changePerPage()" class="px-2 py-1 bg-surface-200 border border-surface-200 rounded text-xs text-gray-300">
+                    <option value="50" selected>50/page</option>
+                    <option value="100">100/page</option>
+                    <option value="200">200/page</option>
+                    <option value="9999">Show All</option>
+                </select>
+            </div>
+        </div>
+
         <table class="w-full text-sm" id="scan-table">
             <thead>
                 <tr class="text-gray-500 text-xs uppercase bg-surface-100">
                     <th class="text-left p-3">#</th>
-                    <th class="text-left p-3">Symbol</th>
-                    <th class="text-left p-3">Name</th>
-                    <th class="text-right p-3">Price (RM)</th>
-                    <th class="text-center p-3">Signal</th>
-                    <th class="text-right p-3">Score</th>
-                    <th class="text-right p-3">RSI</th>
-                    <th class="text-right p-3">ADX</th>
-                    <th class="text-right p-3">Vol</th>
+                    <th class="text-center p-3">★</th>
+                    <th class="text-left p-3 cursor-pointer hover:text-accent select-none" onclick="sortTable('symbol')">Symbol <span class="sort-icon" data-col="symbol"></span></th>
+                    <th class="text-left p-3 cursor-pointer hover:text-accent select-none" onclick="sortTable('name')">Name <span class="sort-icon" data-col="name"></span></th>
+                    <th class="text-right p-3 cursor-pointer hover:text-accent select-none" onclick="sortTable('price')">Price (RM) <span class="sort-icon" data-col="price"></span></th>
+                    <th class="text-center p-3 cursor-pointer hover:text-accent select-none" onclick="sortTable('signal')">Signal <span class="sort-icon" data-col="signal"></span></th>
+                    <th class="text-right p-3 cursor-pointer hover:text-accent select-none" onclick="sortTable('score')">Score <span class="sort-icon" data-col="score"></span></th>
+                    <th class="text-right p-3 cursor-pointer hover:text-accent select-none" onclick="sortTable('rsi')">RSI <span class="sort-icon" data-col="rsi"></span></th>
+                    <th class="text-right p-3 cursor-pointer hover:text-accent select-none" onclick="sortTable('adx')">ADX <span class="sort-icon" data-col="adx"></span></th>
+                    <th class="text-right p-3 cursor-pointer hover:text-accent select-none" onclick="sortTable('volratio')">Vol <span class="sort-icon" data-col="volratio"></span></th>
+                    <th class="text-right p-3 cursor-pointer hover:text-accent select-none" onclick="sortTable('divyield')">Div % <span class="sort-icon" data-col="divyield"></span></th>
                     <th class="text-left p-3">Sector</th>
+                    <th class="text-center p-3 cursor-pointer hover:text-accent select-none" onclick="sortTable('risk')">Risk <span class="sort-icon" data-col="risk"></span></th>
                     <th class="text-left p-3">Key Reasons</th>
                 </tr>
             </thead>
@@ -58,8 +145,24 @@
                 {% for r in results %}
                 <tr class="border-t border-surface-100 hover:bg-surface-100 cursor-pointer stock-row"
                     data-signal="{{ r.signal }}"
+                    data-confirmed="{{ 'true' if r.confirmed else 'false' }}"
+                    data-price="{{ "%.2f"|format(r.close) }}"
+                    data-sector="{{ r.sector }}"
+                    data-divyield="{{ "%.1f"|format(r.div_yield|default(0)) }}"
+                    data-score="{{ r.net_score }}"
+                    data-rsi="{{ "%.0f"|format(r.rsi) if r.rsi else '0' }}"
+                    data-adx="{{ "%.0f"|format(r.adx) if r.adx else '0' }}"
+                    data-volratio="{{ "%.1f"|format(r.volume_ratio) }}"
                     hx-get="/stock/{{ r.symbol }}" hx-target="#main-content" hx-push-url="true">
                     <td class="p-3 text-gray-500">{{ loop.index }}</td>
+                    <td class="p-3 text-center watchlist-btn"
+                        hx-post="/watchlist/quick-add"
+                        hx-vals='{"symbol":"{{ r.symbol }}"}'
+                        hx-swap="innerHTML"
+                        hx-trigger="click"
+                        onclick="event.stopPropagation()">
+                        <span class="text-gray-500 hover:text-yellow-400 cursor-pointer" title="Add to watchlist">☆</span>
+                    </td>
                     <td class="p-3 text-accent font-mono">{{ r.symbol }}</td>
                     <td class="p-3">{{ r.name }}</td>
                     <td class="p-3 text-right font-mono">{{ "%.2f"|format(r.close) }}</td>
@@ -73,12 +176,29 @@
                             {% else %}signal-hold{% endif %}">
                             {{ r.signal }}
                         </span>
+                        {% if r.confirmed %}
+                        <span class="ml-1 px-1.5 py-0.5 rounded text-xs font-bold bg-blue-900/50 text-blue-400" title="Confirmed: BUY in consecutive scans">✓</span>
+                        {% endif %}
                     </td>
                     <td class="p-3 text-right font-mono">{{ r.net_score }}</td>
                     <td class="p-3 text-right font-mono">{{ "%.0f"|format(r.rsi) if r.rsi else "-" }}</td>
                     <td class="p-3 text-right font-mono">{{ "%.0f"|format(r.adx) if r.adx else "-" }}</td>
                     <td class="p-3 text-right font-mono">{{ "%.1f"|format(r.volume_ratio) }}x</td>
+                    <td class="p-3 text-right font-mono {% if r.div_yield|default(0) >= 4 %}text-green-400 font-bold{% elif r.div_yield|default(0) > 0 %}text-gray-300{% else %}text-gray-600{% endif %}">
+                        {{ "%.1f"|format(r.div_yield) if r.div_yield|default(0) > 0 else "-" }}{% if r.div_yield|default(0) >= 4 %} 💰{% endif %}
+                    </td>
                     <td class="p-3 text-gray-400 text-xs">{{ r.sector }}</td>
+                    <td class="p-3 text-center">
+                        <span class="px-1.5 py-0.5 rounded text-xs font-bold
+                            {% if r.risk_level|default('Medium') == 'High' %}bg-red-900/50 text-red-400
+                            {% elif r.risk_level|default('Medium') == 'Low' %}bg-green-900/50 text-green-400
+                            {% else %}bg-yellow-900/50 text-yellow-400{% endif %}">
+                            {{ r.risk_level|default('–') }}
+                        </span>
+                        {% for w in r.risk_warnings|default([]) %}
+                        <span class="text-yellow-500" title="{{ w }}">⚠️</span>
+                        {% endfor %}
+                    </td>
                     <td class="p-3 text-gray-400 text-xs">{{ r.buy_reasons[:2]|join("; ") if r.buy_reasons else r.sell_reasons[:2]|join("; ") }}</td>
                 </tr>
                 {% endfor %}
@@ -92,25 +212,158 @@
     </p>
 
     <script>
+    let activeSignal = 'all';
+    let activePreset = null;
+    let currentPage = 1;
+    let perPage = 50;
+    let sortCol = null;
+    let sortAsc = true;
+    const signalOrder = {'STRONG BUY':5,'BUY':4,'WATCH':3,'HOLD':2,'SELL':1,'STRONG SELL':0};
+    const riskOrder = {'High':3,'Medium':2,'Low':1};
+
     function filterSignals(type) {
-        document.querySelectorAll('.stock-row').forEach(row => {
-            const signal = row.dataset.signal;
-            if (type === 'all') { row.style.display = ''; }
-            else if (type === 'buy') { row.style.display = (signal === 'STRONG BUY' || signal === 'BUY') ? '' : 'none'; }
-            else if (type === 'watch') { row.style.display = signal === 'WATCH' ? '' : 'none'; }
-            else if (type === 'sell') { row.style.display = (signal === 'SELL' || signal === 'STRONG SELL') ? '' : 'none'; }
-        });
+        activeSignal = type;
+        activePreset = null;
         document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
         event.target.classList.add('active');
+        document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('ring-1', 'ring-accent'));
+        currentPage = 1;
+        applyFilters();
     }
 
-    function searchTable(query) {
-        query = query.toLowerCase();
-        document.querySelectorAll('.stock-row').forEach(row => {
-            const text = row.textContent.toLowerCase();
-            row.style.display = text.includes(query) ? '' : 'none';
-        });
+    function applyPreset(preset) {
+        activeSignal = 'all';
+        document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelector('.filter-btn').classList.add('active');
+        document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('ring-1', 'ring-accent'));
+
+        if (preset === 'clear') {
+            activePreset = null;
+            document.getElementById('price-min').value = '';
+            document.getElementById('price-max').value = '';
+            document.getElementById('sector-filter').value = '';
+            document.getElementById('stock-search').value = '';
+            currentPage = 1;
+            applyFilters();
+            return;
+        }
+
+        activePreset = preset;
+        event.target.classList.add('ring-1', 'ring-accent');
+        document.getElementById('price-min').value = '';
+        document.getElementById('price-max').value = '';
+        document.getElementById('sector-filter').value = '';
+        document.getElementById('stock-search').value = '';
+        if (preset === 'penny') document.getElementById('price-max').value = '1.00';
+        currentPage = 1;
+        applyFilters();
     }
+
+    function sortTable(col) {
+        if (sortCol === col) { sortAsc = !sortAsc; } else { sortCol = col; sortAsc = (col === 'symbol' || col === 'name'); }
+        // Update sort icons
+        document.querySelectorAll('.sort-icon').forEach(el => el.textContent = '');
+        const icon = document.querySelector(`.sort-icon[data-col="${col}"]`);
+        if (icon) icon.textContent = sortAsc ? ' ▲' : ' ▼';
+
+        const tbody = document.querySelector('#scan-table tbody');
+        const rows = Array.from(tbody.querySelectorAll('.stock-row'));
+
+        rows.sort((a, b) => {
+            let va, vb;
+            if (col === 'symbol') { va = a.children[1].textContent.trim(); vb = b.children[1].textContent.trim(); return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va); }
+            if (col === 'name') { va = a.children[2].textContent.trim(); vb = b.children[2].textContent.trim(); return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va); }
+            if (col === 'signal') { va = signalOrder[a.dataset.signal]||0; vb = signalOrder[b.dataset.signal]||0; }
+            else if (col === 'risk') {
+                const ra = a.querySelector('td:nth-child(12) span');
+                const rb = b.querySelector('td:nth-child(12) span');
+                va = riskOrder[(ra?ra.textContent.trim():'')]||0;
+                vb = riskOrder[(rb?rb.textContent.trim():'')]||0;
+            }
+            else if (col === 'price') { va = parseFloat(a.dataset.price)||0; vb = parseFloat(b.dataset.price)||0; }
+            else if (col === 'score') { va = parseFloat(a.dataset.score)||0; vb = parseFloat(b.dataset.score)||0; }
+            else if (col === 'rsi') { va = parseFloat(a.dataset.rsi)||0; vb = parseFloat(b.dataset.rsi)||0; }
+            else if (col === 'adx') { va = parseFloat(a.dataset.adx)||0; vb = parseFloat(b.dataset.adx)||0; }
+            else if (col === 'volratio') { va = parseFloat(a.dataset.volratio)||0; vb = parseFloat(b.dataset.volratio)||0; }
+            else if (col === 'divyield') { va = parseFloat(a.dataset.divyield)||0; vb = parseFloat(b.dataset.divyield)||0; }
+            else { return 0; }
+            return sortAsc ? va - vb : vb - va;
+        });
+
+        rows.forEach(r => tbody.appendChild(r));
+        currentPage = 1;
+        applyFilters();
+    }
+
+    function applyFilters() {
+        const query = (document.getElementById('stock-search').value || '').toLowerCase();
+        const minPrice = parseFloat(document.getElementById('price-min').value) || 0;
+        const maxPrice = parseFloat(document.getElementById('price-max').value) || Infinity;
+        const sector = document.getElementById('sector-filter').value;
+
+        const rows = document.querySelectorAll('.stock-row');
+        let visibleRows = [];
+
+        rows.forEach(row => {
+            const signal = row.dataset.signal;
+            const price = parseFloat(row.dataset.price) || 0;
+            const text = row.textContent.toLowerCase();
+            const divYield = parseFloat(row.dataset.divyield) || 0;
+            const score = parseFloat(row.dataset.score) || 0;
+            const rsi = parseFloat(row.dataset.rsi) || 0;
+            const adx = parseFloat(row.dataset.adx) || 0;
+            const volRatio = parseFloat(row.dataset.volratio) || 0;
+
+            let show = true;
+            if (activeSignal === 'buy') show = (signal === 'STRONG BUY' || signal === 'BUY');
+            else if (activeSignal === 'watch') show = signal === 'WATCH';
+            else if (activeSignal === 'sell') show = (signal === 'SELL' || signal === 'STRONG SELL');
+            else if (activeSignal === 'confirmed') show = row.dataset.confirmed === 'true';
+
+            if (show && activePreset === 'growth') show = score >= 30 && (signal === 'STRONG BUY' || signal === 'BUY');
+            else if (show && activePreset === 'dividend') show = divYield >= 4;
+            else if (show && activePreset === 'momentum') show = rsi >= 50 && adx >= 20 && volRatio >= 1.5;
+
+            if (show && query) show = text.includes(query);
+            if (show) show = price >= minPrice && price <= maxPrice;
+            if (show && sector) show = row.dataset.sector === sector;
+
+            row._filtered = show;
+            if (show) visibleRows.push(row);
+        });
+
+        // Pagination
+        const totalVisible = visibleRows.length;
+        const totalPages = Math.max(1, Math.ceil(totalVisible / perPage));
+        if (currentPage > totalPages) currentPage = totalPages;
+        const start = (currentPage - 1) * perPage;
+        const end = start + perPage;
+
+        let idx = 0;
+        rows.forEach(row => {
+            if (!row._filtered) { row.style.display = 'none'; return; }
+            if (idx >= start && idx < end) {
+                row.style.display = '';
+                row.children[0].textContent = idx + 1; // Update row number
+            } else {
+                row.style.display = 'none';
+            }
+            idx++;
+        });
+
+        // Update pagination UI
+        document.getElementById('page-info').textContent = `Showing ${Math.min(start+1, totalVisible)}–${Math.min(end, totalVisible)} of ${totalVisible}`;
+        document.getElementById('page-num').textContent = `${currentPage} / ${totalPages}`;
+        document.getElementById('btn-prev').disabled = currentPage <= 1;
+        document.getElementById('btn-next').disabled = currentPage >= totalPages;
+    }
+
+    function prevPage() { if (currentPage > 1) { currentPage--; applyFilters(); } }
+    function nextPage() { currentPage++; applyFilters(); }
+    function changePerPage() { perPage = parseInt(document.getElementById('per-page').value); currentPage = 1; applyFilters(); }
+
+    // Initialize pagination on load
+    applyFilters();
     </script>
 
     {% else %}

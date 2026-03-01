@@ -18,10 +18,11 @@
 
 - [ ] **Weekly Performance Report** — Every Sunday: "Your picks this week: 3 up, 1 down, +4.2% overall"
 - [ ] **Price Target Alerts** — "MBSB hit your target RM 2.80 — consider taking profit"
-- [ ] **Market Sentiment** — KLCI index trend — is the overall market bullish or bearish?
+- [x] **Market Sentiment** — KLCI index trend — is the overall market bullish or bearish?
 
 ## 🧠 Advanced
 
+- [x] **Consecutive Signal Confirmation** — BUY must appear in 2+ consecutive scans for +10 bonus (reduces false positives)
 - [ ] **Pattern Detection** — Detect chart patterns (double bottom, breakout, cup & handle).
 - [ ] **Foreign Fund Flow** — Track if foreign investors are buying/selling Malaysian stocks.
 - [ ] **Screener Presets** — Quick commands like `scan --growth`, `scan --dividend`, `scan --momentum`.

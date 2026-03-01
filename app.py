@@ -6,29 +6,51 @@ Run: python app.py
 
 import time
 import math
+import threading
+import pickle
+import os
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify
 
 from scanner.symbols import get_all_symbols, get_symbol_name, search_symbol, SYMBOLS
-from scanner.data_fetcher import fetch_stock_data, fetch_bulk_data
+from scanner.data_fetcher import fetch_stock_data, fetch_bulk_data, fetch_batch_download
 from scanner.indicators import compute_indicators, get_latest_indicators
-from scanner.signals import analyze_stock
-from scanner.portfolio import add_stock, remove_stock, get_portfolio
+from scanner.signals import analyze_stock, classify_net_score
+from scanner.market_sentiment import fetch_market_sentiment
+from scanner.db import (
+    add_stock, remove_stock, get_portfolio,
+    add_to_watchlist, remove_from_watchlist, get_watchlist, check_alerts,
+    get_tracker_stats, get_recent_signals,
+)
 from scanner.sectors import analyze_sectors, get_sector
-from scanner.signal_tracker import get_tracker_stats, get_recent_signals
 from scanner.advanced import (
     multi_timeframe_score,
     find_support_resistance,
     detect_volume_spike,
     calculate_position_size,
+    compute_risk_score,
+    calculate_entry_plan,
 )
+from scanner.backtest import backtest as run_backtest
 
 app = Flask(__name__)
 
 # ── In-memory cache ──
 _cache = {}
-SCAN_TTL = 900      # 15 minutes
-STOCK_TTL = 600     # 10 minutes
+SCAN_TTL = 86400     # 24 hours (scan results persist until manual refresh)
+STOCK_TTL = 600      # 10 minutes
+SCAN_SAVE_PATH = os.path.join(os.path.dirname(__file__), "data", "last_scan.pkl")
+PREV_SIGNALS_PATH = os.path.join(os.path.dirname(__file__), "data", "prev_signals.pkl")
+
+# ── Background scan state ──
+_scan_progress = {
+    "running": False,
+    "current": 0,
+    "total": 0,
+    "status": "idle",       # idle | scanning | done | error
+    "message": "",
+}
+_scan_lock = threading.Lock()
 
 
 def _cache_get(key):
@@ -44,9 +66,111 @@ def _cache_set(key, data, ttl):
     _cache[key] = {"data": data, "time": time.time(), "ttl": ttl}
 
 
+def _save_scan_to_disk(scan_result):
+    """Persist scan results to disk so they survive restarts."""
+    try:
+        os.makedirs(os.path.dirname(SCAN_SAVE_PATH), exist_ok=True)
+        with open(SCAN_SAVE_PATH, "wb") as f:
+            pickle.dump(scan_result, f)
+    except Exception:
+        pass
+
+
+def _load_scan_from_disk():
+    """Load last scan results from disk into cache on startup."""
+    try:
+        if not os.path.exists(SCAN_SAVE_PATH):
+            return
+        with open(SCAN_SAVE_PATH, "rb") as f:
+            scan_result = pickle.load(f)
+        if scan_result and "results" in scan_result:
+            _cache_set("scan_all", scan_result, SCAN_TTL)
+    except Exception:
+        pass
+
+
+def _load_prev_signals():
+    """Load previous scan signals for consecutive confirmation."""
+    try:
+        if os.path.exists(PREV_SIGNALS_PATH):
+            with open(PREV_SIGNALS_PATH, "rb") as f:
+                return pickle.load(f)
+    except Exception:
+        pass
+    return {}
+
+
+def _save_prev_signals(signals):
+    """Save current signals for next scan's confirmation check."""
+    try:
+        os.makedirs(os.path.dirname(PREV_SIGNALS_PATH), exist_ok=True)
+        with open(PREV_SIGNALS_PATH, "wb") as f:
+            pickle.dump(signals, f)
+    except Exception:
+        pass
+
+
+# Startup initialization is deferred until after all functions are defined (see below)
+
+
 def _is_htmx(request):
     """Check if request is from HTMX (partial) or direct navigation (full page)."""
     return request.headers.get("HX-Request") == "true"
+
+
+def _get_klci_sentiment():
+    """Fetch KLCI index data for market sentiment (cached 24h)."""
+    cache_key = "klci_sentiment"
+    cached = _cache_get(cache_key)
+    if cached:
+        return cached
+
+    try:
+        df = fetch_stock_data("^KLSE", period="1mo")
+        if df is None or len(df) < 2:
+            return None
+
+        current = df["Close"].iloc[-1]
+        prev = df["Close"].iloc[-2]
+        change = current - prev
+        change_pct = (change / prev) * 100
+
+        ema5 = df["Close"].rolling(5).mean().iloc[-1]
+        ema20 = df["Close"].rolling(20).mean().iloc[-1]
+
+        if change_pct > 0.3:
+            mood = "Bullish"
+        elif change_pct < -0.3:
+            mood = "Bearish"
+        else:
+            mood = "Neutral"
+
+        if current > ema5 > ema20:
+            trend = "Uptrend"
+        elif current < ema5 < ema20:
+            trend = "Downtrend"
+        else:
+            trend = "Sideways"
+
+        result = {
+            "price": current,
+            "change": change,
+            "change_pct": change_pct,
+            "mood": mood,
+            "trend": trend,
+        }
+        _cache_set(cache_key, result, SCAN_TTL)  # 24h cache
+        return result
+    except Exception:
+        return None
+
+
+def _refresh_klci_background():
+    """Fetch KLCI sentiment in a background thread if not cached."""
+    if _cache_get("klci_sentiment"):
+        return
+    thread = threading.Thread(target=_get_klci_sentiment, daemon=True)
+    thread.start()
 
 
 def _render(template, request, **kwargs):
@@ -68,17 +192,25 @@ def _run_scan(force=False):
             return cached
 
     symbols = get_all_symbols()
+    total = len(symbols)
 
-    # Fetch without Rich progress bar (we're in web context)
-    stock_data = {}
-    failed = 0
-    for symbol in symbols:
-        df = fetch_stock_data(symbol, period="1y")
-        if df is not None:
-            stock_data[symbol] = df
-        else:
-            failed += 1
-        time.sleep(0.2)
+    _scan_progress["current"] = 0
+    _scan_progress["total"] = total
+    _scan_progress["status"] = "scanning"
+    _scan_progress["message"] = "Fetching stock data (batch mode)..."
+
+    def _on_progress(current, total_count, msg):
+        _scan_progress["current"] = current
+        _scan_progress["total"] = total_count
+        _scan_progress["message"] = msg
+
+    stock_data = fetch_batch_download(symbols, period="1y", chunk_size=50, on_progress=_on_progress)
+    failed = total - len(stock_data)
+
+    _scan_progress["message"] = "Checking market sentiment..."
+    sentiment = fetch_market_sentiment()
+
+    _scan_progress["message"] = "Analyzing signals..."
 
     results = []
     for symbol, df in stock_data.items():
@@ -91,6 +223,9 @@ def _run_scan(force=False):
             analysis["net_score"] += mtf_bonus
             analysis["mtf"] = mtf_desc or ""
 
+            # Market sentiment adjustment
+            analysis["net_score"] += sentiment["score_adj"]
+
             analysis["symbol"] = symbol
             analysis["name"] = get_symbol_name(symbol)
             analysis["close"] = ind.get("close", 0)
@@ -98,6 +233,13 @@ def _run_scan(force=False):
             analysis["adx"] = ind.get("adx", 0)
             analysis["shariah"] = True
             analysis["sector"] = get_sector(symbol)
+
+            # Trailing 12-month dividend yield
+            try:
+                div_total = df["Dividends"].sum() if "Dividends" in df.columns else 0
+                analysis["div_yield"] = (div_total / ind["close"] * 100) if ind["close"] > 0 and div_total > 0 else 0
+            except Exception:
+                analysis["div_yield"] = 0
 
             vol_sma = ind.get("volume_sma_20", 0)
             analysis["volume_ratio"] = (
@@ -107,9 +249,30 @@ def _run_scan(force=False):
             spike = detect_volume_spike(df)
             analysis["spike"] = spike
 
+            risk = compute_risk_score(ind)
+            analysis["risk_level"] = risk["level"]
+            analysis["risk_warnings"] = risk["warnings"]
+
             results.append(analysis)
         except Exception:
             continue
+
+    # Consecutive signal confirmation: compare with previous scan
+    prev_signals = _load_prev_signals()
+    for r in results:
+        # Reclassify signal based on adjusted net_score (MTF + sentiment)
+        r["signal"] = classify_net_score(r["net_score"])
+        # Check if stock was also BUY in previous scan
+        r["confirmed"] = (
+            r["signal"] in ("STRONG BUY", "BUY")
+            and prev_signals.get(r["symbol"]) in ("STRONG BUY", "BUY")
+        )
+        if r["confirmed"]:
+            r["net_score"] += 10
+            r["signal"] = classify_net_score(r["net_score"])
+
+    # Save current signals for next scan's confirmation
+    _save_prev_signals({r["symbol"]: r["signal"] for r in results})
 
     results.sort(key=lambda x: x["net_score"], reverse=True)
 
@@ -119,9 +282,40 @@ def _run_scan(force=False):
         "failed": failed,
         "time": datetime.now(),
         "stock_data": stock_data,
+        "sentiment": sentiment,
     }
     _cache_set(cache_key, scan_result, SCAN_TTL)
+    _save_scan_to_disk(scan_result)
+
+    _scan_progress["status"] = "done"
+    _scan_progress["running"] = False
+    _scan_progress["message"] = "Scan complete"
+
     return scan_result
+
+
+def _start_background_scan(force=False):
+    """Launch scan in a background thread if not already running."""
+    with _scan_lock:
+        if _scan_progress["running"]:
+            return  # already running
+        _scan_progress["running"] = True
+
+    def _worker():
+        try:
+            _run_scan(force=force)
+        except Exception as e:
+            _scan_progress["status"] = "error"
+            _scan_progress["message"] = str(e)
+            _scan_progress["running"] = False
+
+    thread = threading.Thread(target=_worker, daemon=True)
+    thread.start()
+
+
+# ── Startup initialization ──
+_load_scan_from_disk()
+_refresh_klci_background()
 
 
 # ── Routes ──
@@ -130,15 +324,38 @@ def _run_scan(force=False):
 def dashboard():
     """Dashboard with summary cards."""
     scan = _cache_get("scan_all")
-    return _render("dashboard.html", request, scan=scan)
+    klci = _get_klci_sentiment()
+    return _render("dashboard.html", request, scan=scan, klci=klci)
 
 
 @app.route("/scan")
 def scan():
     """Full scan results page."""
     force = request.args.get("refresh") == "1"
-    scan = _run_scan(force=force)
-    return _render("scanner.html", request, scan=scan)
+
+    # If cached results exist (and not forcing refresh), show them immediately
+    if not force:
+        cached = _cache_get("scan_all")
+        if cached:
+            return _render("scanner.html", request, scan=cached)
+
+    # Start background scan if not already running
+    _start_background_scan(force=force)
+    return _render("scan_progress.html", request)
+
+
+@app.route("/scan/status")
+def scan_status():
+    """Return scan progress — used by HTMX polling."""
+    # If scan is done, return the full scanner results
+    if _scan_progress["status"] == "done":
+        scan_data = _cache_get("scan_all")
+        if scan_data:
+            return render_template("scanner.html", scan=scan_data, now=datetime.now())
+
+    # Otherwise return progress partial
+    return render_template("scan_progress_partial.html",
+                           progress=_scan_progress, now=datetime.now())
 
 
 @app.route("/stock/<symbol>")
@@ -163,6 +380,8 @@ def stock_detail(symbol):
         sr = find_support_resistance(df)
         spike = detect_volume_spike(df)
         sizing = calculate_position_size(10000, ind["close"])
+        risk = compute_risk_score(ind)
+        entry_plan = calculate_entry_plan(ind["close"], ind.get("atr", 0))
 
         vol_sma = ind.get("volume_sma_20", 0)
         vol_ratio = ind["volume"] / vol_sma if vol_sma and vol_sma > 0 else 0
@@ -177,6 +396,8 @@ def stock_detail(symbol):
             "support_resistance": sr,
             "spike": spike,
             "sizing": sizing,
+            "risk": risk,
+            "entry_plan": entry_plan,
             "sector": get_sector(symbol),
             "shariah": True,
             "volume_ratio": vol_ratio,
@@ -188,12 +409,67 @@ def stock_detail(symbol):
 
 @app.route("/sectors")
 def sectors():
-    """Sector rotation view."""
+    """Sector rotation view — uses pre-computed scan results (fast)."""
     scan = _cache_get("scan_all")
     if not scan:
-        scan = _run_scan()
+        _start_background_scan()
+        return _render("scan_progress.html", request)
 
-    sector_data = analyze_sectors(scan["stock_data"])
+    # Build sector data from pre-computed scan results instead of re-analyzing
+    sector_stocks = {}
+    for r in scan.get("results", []):
+        sector = r.get("sector", "Unknown")
+        if sector not in sector_stocks:
+            sector_stocks[sector] = []
+        sector_stocks[sector].append(r)
+
+    sector_data = []
+    for sector, stocks in sector_stocks.items():
+        if not stocks:
+            continue
+        avg_score = sum(s["net_score"] for s in stocks) / len(stocks)
+        avg_rsi = sum(s.get("rsi", 50) or 50 for s in stocks) / len(stocks)
+        buy_count = sum(1 for s in stocks if s["signal"] in ("BUY", "STRONG BUY"))
+        sell_count = sum(1 for s in stocks if s["signal"] in ("SELL", "STRONG SELL"))
+
+        # Estimate 1-month change from stock_data if available
+        avg_pct = 0
+        pct_count = 0
+        for s in stocks:
+            sdf = scan["stock_data"].get(s["symbol"])
+            if sdf is not None and len(sdf) >= 20:
+                try:
+                    pct = ((s["close"] - sdf.iloc[-20]["Close"]) / sdf.iloc[-20]["Close"]) * 100
+                    avg_pct += pct
+                    pct_count += 1
+                except Exception:
+                    pass
+        avg_pct = avg_pct / pct_count if pct_count > 0 else 0
+
+        if avg_score >= 30:
+            trend = "🟢 HOT"
+        elif avg_score >= 10:
+            trend = "🟡 WARM"
+        elif avg_score >= -10:
+            trend = "⚪ NEUTRAL"
+        else:
+            trend = "🔴 COLD"
+
+        top = max(stocks, key=lambda s: s["net_score"])
+        sector_data.append({
+            "sector": sector,
+            "trend": trend,
+            "avg_score": avg_score,
+            "avg_rsi": avg_rsi,
+            "avg_pct_1m": avg_pct,
+            "stock_count": len(stocks),
+            "buy_signals": buy_count,
+            "sell_signals": sell_count,
+            "top_stock": {"symbol": top["symbol"], "close": top["close"],
+                          "net_score": top["net_score"], "signal": top["signal"]},
+        })
+
+    sector_data.sort(key=lambda x: x["avg_score"], reverse=True)
     return _render("sectors.html", request, sectors=sector_data, scan=scan)
 
 
@@ -202,7 +478,8 @@ def spikes():
     """Volume spikes page."""
     scan = _cache_get("scan_all")
     if not scan:
-        scan = _run_scan()
+        _start_background_scan()
+        return _render("scan_progress.html", request)
 
     spike_list = []
     for r in scan["results"]:
@@ -227,7 +504,7 @@ def portfolio():
         symbol = stock["symbol"]
         df = fetch_stock_data(symbol, period="6mo")
         if df is None:
-            holdings.append({**stock, "name": get_symbol_name(symbol), "current": None, "pnl": None, "analysis": None})
+            holdings.append({**stock, "name": get_symbol_name(symbol), "current": None, "pnl": None, "analysis": None, "stop_loss": None, "risk": None})
             continue
 
         df = compute_indicators(df)
@@ -235,6 +512,9 @@ def portfolio():
         analysis = analyze_stock(ind)
         current = ind["close"]
         pnl = ((current - stock["buy_price"]) / stock["buy_price"]) * 100
+        risk = compute_risk_score(ind)
+        atr = ind.get("atr", 0)
+        stop_price = current - (2 * atr) if atr else stock["buy_price"] * 0.9
 
         holdings.append({
             **stock,
@@ -242,9 +522,32 @@ def portfolio():
             "current": current,
             "pnl": pnl,
             "analysis": analysis,
+            "risk": risk,
+            "stop_loss": max(stop_price, 0.005),
         })
 
-    return _render("portfolio.html", request, holdings=holdings)
+    # Compute portfolio summary
+    active = [h for h in holdings if h.get("current")]
+    total_invested = sum(h["buy_price"] * h.get("quantity", 0) for h in active if h.get("quantity"))
+    total_current = sum(h["current"] * h.get("quantity", 0) for h in active if h.get("quantity"))
+    total_risk = sum((h["current"] - h["stop_loss"]) * h.get("quantity", 0) for h in active if h.get("quantity") and h.get("stop_loss"))
+    avg_pnl = sum(h["pnl"] for h in active) / len(active) if active else 0
+    sell_count = len([h for h in active if h.get("analysis") and h["analysis"]["signal"] in ("SELL", "STRONG SELL")])
+    high_risk_count = len([h for h in active if h.get("risk") and h["risk"]["level"] == "High"])
+    worst = min(active, key=lambda h: h.get("pnl", 0)) if active else None
+
+    summary = {
+        "total_invested": total_invested,
+        "total_current": total_current,
+        "total_risk": total_risk,
+        "avg_pnl": avg_pnl,
+        "sell_count": sell_count,
+        "high_risk_count": high_risk_count,
+        "worst": worst,
+        "count": len(active),
+    }
+
+    return _render("portfolio.html", request, holdings=holdings, summary=summary)
 
 
 @app.route("/portfolio/add", methods=["POST"])
@@ -277,6 +580,135 @@ def tracker():
     stats = get_tracker_stats()
     recent = get_recent_signals(20)
     return _render("tracker.html", request, stats=stats, recent=recent)
+
+
+@app.route("/backtest")
+def backtest_page():
+    """Backtest page — form + results."""
+    scan = _cache_get("scan_all")
+    has_data = scan is not None
+    return _render("backtest.html", request, has_data=has_data, result=None)
+
+
+@app.route("/manual")
+def manual():
+    """User manual page."""
+    return _render("manual.html", request)
+
+
+@app.route("/backtest/run", methods=["POST"])
+def backtest_run():
+    """Run backtest with submitted parameters."""
+    scan = _cache_get("scan_all")
+    if not scan:
+        return _render("backtest.html", request, has_data=False, result=None,
+                       error="Run a scan first to load stock data.")
+
+    lookback = int(request.form.get("lookback", 60))
+    top_n = int(request.form.get("top_n", 10))
+    scan_interval = int(request.form.get("scan_interval", 5))
+    stop_loss = float(request.form.get("stop_loss", -7))
+    min_price = float(request.form.get("min_price", 0.10))
+    max_price = float(request.form.get("max_price", 0))
+    signal_filter = request.form.get("signal_filter", "BUY")
+    capital = float(request.form.get("capital", 10000))
+    volume_confirm = request.form.get("volume_confirm") == "on"
+    trend_confirm = request.form.get("trend_confirm") == "on"
+    take_profit_atr = float(request.form.get("take_profit_atr", 3.0))
+    market_filter = request.form.get("market_filter") == "on"
+    signal_confirmation = request.form.get("signal_confirmation") == "on"
+
+    symbol_names = {s: get_symbol_name(s) for s in scan["stock_data"]}
+
+    result = run_backtest(
+        stock_data=scan["stock_data"],
+        symbol_names=symbol_names,
+        lookback_days=lookback,
+        top_n=top_n,
+        scan_interval=scan_interval,
+        stop_loss_pct=stop_loss,
+        min_price=min_price,
+        max_price=max_price,
+        signal_filter=signal_filter,
+        capital=capital,
+        volume_confirm=volume_confirm,
+        trend_confirm=trend_confirm,
+        take_profit_atr=take_profit_atr,
+        market_filter=market_filter,
+        signal_confirmation=signal_confirmation,
+    )
+
+    return _render("backtest.html", request, has_data=True, result=result)
+
+
+@app.route("/watchlist")
+def watchlist():
+    """Watchlist with price alerts."""
+    stocks = get_watchlist()
+
+    items = []
+    for stock in stocks:
+        symbol = stock["symbol"]
+        df = fetch_stock_data(symbol, period="5d")
+        current = None
+        change = None
+        alert = None
+
+        if df is not None and len(df) >= 2:
+            current = df["Close"].iloc[-1]
+            prev = df["Close"].iloc[-2]
+            change = ((current - prev) / prev) * 100
+
+            if stock["target_high"] > 0 and current >= stock["target_high"]:
+                alert = "above"
+            elif stock["target_low"] > 0 and current <= stock["target_low"]:
+                alert = "below"
+
+        items.append({
+            **stock,
+            "name": get_symbol_name(symbol),
+            "current": current,
+            "change": change,
+            "alert": alert,
+        })
+
+    return _render("watchlist.html", request, items=items)
+
+
+@app.route("/watchlist/quick-add", methods=["POST"])
+def watchlist_quick_add():
+    """Quick-add stock to watchlist from scanner (returns inline snippet)."""
+    symbol = request.form.get("symbol", "").upper()
+    if not symbol.endswith(".KL"):
+        symbol += ".KL"
+    if symbol in SYMBOLS:
+        add_to_watchlist(symbol)
+        return '<span class="text-green-400" title="Added to watchlist">✅</span>'
+    return '<span class="text-red-400" title="Invalid symbol">❌</span>'
+
+
+@app.route("/watchlist/add", methods=["POST"])
+def watchlist_add():
+    """Add stock to watchlist."""
+    symbol = request.form.get("symbol", "").upper()
+    if not symbol.endswith(".KL"):
+        symbol += ".KL"
+    target_high = float(request.form.get("target_high", 0) or 0)
+    target_low = float(request.form.get("target_low", 0) or 0)
+    notes = request.form.get("notes", "")
+
+    if symbol in SYMBOLS:
+        add_to_watchlist(symbol, target_high, target_low, notes)
+
+    return watchlist()
+
+
+@app.route("/watchlist/remove", methods=["POST"])
+def watchlist_remove():
+    """Remove stock from watchlist."""
+    symbol = request.form.get("symbol", "")
+    remove_from_watchlist(symbol)
+    return watchlist()
 
 
 # ── API endpoints (JSON) ──
@@ -364,5 +796,5 @@ def api_search():
 
 
 if __name__ == "__main__":
-    print("\n🎯 Stock Hunter Web — http://localhost:5000\n")
-    app.run(debug=True, port=5000)
+    print("\n🎯 Stock Hunter Web — http://localhost:5001\n")
+    app.run(debug=True, port=5001)

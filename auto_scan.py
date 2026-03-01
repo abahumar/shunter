@@ -20,6 +20,7 @@ from scanner.portfolio import get_portfolio
 from scanner.sectors import analyze_sectors
 from scanner.advanced import multi_timeframe_score, detect_volume_spike
 from scanner.signal_tracker import log_signals, update_outcomes, format_outcome_updates
+from scanner.market_sentiment import fetch_market_sentiment
 from scanner.telegram_notify import (
     send_message,
     format_scan_results,
@@ -120,6 +121,13 @@ def main():
     print("🎯 Stock Hunter Auto Scan")
     print("=" * 40)
 
+    # 0. Check market sentiment
+    print("\n📊 Checking market sentiment...")
+    sentiment = fetch_market_sentiment()
+    print(f"  Market: {sentiment['trend']} (score adj: {sentiment['score_adj']:+d})")
+    for reason in sentiment.get("reasons", []):
+        print(f"    • {reason}")
+
     # 1. Scan for BUY signals
     print("\n📊 Scanning stocks...")
     results, stock_data = run_scan(
@@ -141,6 +149,10 @@ def main():
         print(f"📊 {len(outcome_updates)} signal outcomes updated")
 
     scan_msg = format_scan_results(results, shariah=args.shariah)
+
+    # Add market sentiment to message
+    sentiment_emoji = "🟢" if sentiment["trend"] == "Bullish" else ("🔴" if sentiment["trend"] == "Bearish" else "🟡")
+    sentiment_msg = f"\n{sentiment_emoji} <b>Market: {sentiment['trend']}</b> ({sentiment['description']})\n"
 
     # 1b. Sector rotation summary
     sectors = analyze_sectors(stock_data)
@@ -174,7 +186,7 @@ def main():
 
     # 3. Send or print
     tracker_msg = format_outcome_updates(outcome_updates)
-    full_msg = scan_msg + sector_msg + spike_msg + sell_msg + portfolio_msg + tracker_msg
+    full_msg = scan_msg + sentiment_msg + sector_msg + spike_msg + sell_msg + portfolio_msg + tracker_msg
 
     if args.no_telegram:
         # Strip HTML tags for console output
