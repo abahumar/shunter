@@ -102,6 +102,8 @@ def backtest(
     if market_filter:
         try:
             klci_df = fetch_stock_data(KLCI_SYMBOL, period="1y")
+            if klci_df is not None and klci_df.index.tz is not None:
+                klci_df.index = klci_df.index.tz_localize(None)
         except Exception:
             pass
 
