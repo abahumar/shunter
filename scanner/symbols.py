@@ -923,7 +923,7 @@ SYMBOLS = {
 
     # ── Finance ──
     "03059.KL": "Autoris Group Holdings",
-    "5320.KL": "Prolintas Infra Business Trust The list is updated monthly. Senarai ini dikemaskini pada setiap bulan. ADDITIONAL LIST: OTHER SHARIAH-COMPLIANT CAPITAL MARKET INSTRUMENTS SENARAI TAMBAHAN: INSTRUMEN",
+    "5320.KL": "Prolintas Infra Business Trust",
 }
 
 

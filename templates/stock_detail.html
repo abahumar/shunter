@@ -32,6 +32,14 @@
                 {% else %}signal-hold{% endif %}">
                 {{ a.signal }} ({{ a.net_score }})
             </span>
+            {% if d.risk %}
+            <span class="px-2 py-1 rounded text-xs font-bold mt-1 ml-1 inline-block
+                {% if d.risk.level == 'High' %}bg-red-900/50 text-red-400
+                {% elif d.risk.level == 'Low' %}bg-green-900/50 text-green-400
+                {% else %}bg-yellow-900/50 text-yellow-400{% endif %}">
+                Risk: {{ d.risk.level }}
+            </span>
+            {% endif %}
         </div>
     </div>
 
@@ -145,6 +153,75 @@
             </div>
             {% endif %}
         </div>
+    </div>
+
+    <!-- Entry Plan + Risk Warnings -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {% if d.entry_plan %}
+        {% set ep = d.entry_plan %}
+        <div class="card p-4">
+            <h3 class="text-sm font-semibold text-gray-400 uppercase mb-3">📋 Entry Plan (ATR-based)</h3>
+            <div class="space-y-2 text-sm">
+                <div class="flex justify-between">
+                    <span class="text-gray-500">Entry Price</span>
+                    <span class="font-mono text-white font-bold">RM {{ "%.3f"|format(ep.entry) }}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-red-400">Stop-Loss (2×ATR)</span>
+                    <span class="font-mono text-red-400 font-bold">RM {{ "%.3f"|format(ep.stop_loss) }} (-{{ "%.1f"|format(ep.stop_pct) }}%)</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-green-400">Take-Profit (3×ATR)</span>
+                    <span class="font-mono text-green-400 font-bold">RM {{ "%.3f"|format(ep.take_profit) }} (+{{ "%.1f"|format(ep.target_pct) }}%)</span>
+                </div>
+                <hr class="border-surface-100">
+                <div class="flex justify-between">
+                    <span class="text-gray-500">Risk / Reward</span>
+                    <span class="font-mono font-bold {% if ep.rr_ratio >= 1.5 %}text-green-400{% elif ep.rr_ratio >= 1 %}text-yellow-400{% else %}text-red-400{% endif %}">
+                        1 : {{ "%.1f"|format(ep.rr_ratio) }}
+                    </span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-500">Risk / Share</span>
+                    <span class="font-mono text-gray-300">RM {{ "%.4f"|format(ep.risk_per_share) }}</span>
+                </div>
+            </div>
+            {% if ep.rr_ratio < 1 %}
+            <p class="text-xs text-red-400 mt-3">⚠️ Risk/reward below 1:1 — unfavorable entry.</p>
+            {% elif ep.rr_ratio >= 1.5 %}
+            <p class="text-xs text-green-400 mt-3">✅ Good risk/reward ratio (≥1:1.5).</p>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% if d.risk and d.risk.warnings %}
+        <div class="card p-4">
+            <h3 class="text-sm font-semibold text-gray-400 uppercase mb-3">⚠️ Risk Warnings</h3>
+            <div class="space-y-2">
+                {% for w in d.risk.warnings %}
+                <p class="text-sm text-yellow-400 flex items-start gap-2">
+                    <span class="text-yellow-500 mt-0.5">⚠️</span> {{ w }}
+                </p>
+                {% endfor %}
+            </div>
+            <div class="mt-3 pt-3 border-t border-surface-100">
+                <p class="text-xs text-gray-500">
+                    Risk Level:
+                    <span class="font-bold
+                        {% if d.risk.level == 'High' %}text-red-400
+                        {% elif d.risk.level == 'Low' %}text-green-400
+                        {% else %}text-yellow-400{% endif %}">{{ d.risk.level }}</span>
+                    ({{ d.risk.points }} points)
+                </p>
+            </div>
+        </div>
+        {% elif d.risk %}
+        <div class="card p-4">
+            <h3 class="text-sm font-semibold text-gray-400 uppercase mb-3">✅ Risk Assessment</h3>
+            <p class="text-sm text-green-400">No major risk warnings detected.</p>
+            <p class="text-xs text-gray-500 mt-2">Risk Level: <span class="font-bold text-green-400">{{ d.risk.level }}</span></p>
+        </div>
+        {% endif %}
     </div>
 </div>
 

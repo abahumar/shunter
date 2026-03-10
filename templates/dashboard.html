@@ -7,6 +7,37 @@
         </button>
     </div>
 
+    <!-- KLCI Sentiment -->
+    {% if klci %}
+    <div class="card p-4 flex items-center justify-between">
+        <div class="flex items-center gap-4">
+            <div>
+                <p class="text-xs text-gray-500 uppercase tracking-wide">KLCI Index</p>
+                <p class="text-2xl font-bold text-white">{{ "%.2f"|format(klci.price) }}</p>
+            </div>
+            <div>
+                <span class="text-lg font-mono font-bold {% if klci.change >= 0 %}text-green-400{% else %}text-red-400{% endif %}">
+                    {{ "%+.2f"|format(klci.change) }} ({{ "%+.2f"|format(klci.change_pct) }}%)
+                </span>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+            <span class="px-3 py-1 rounded text-xs font-bold
+                {% if klci.mood == 'Bullish' %}bg-green-900/50 text-green-400
+                {% elif klci.mood == 'Bearish' %}bg-red-900/50 text-red-400
+                {% else %}bg-yellow-900/50 text-yellow-400{% endif %}">
+                {{ klci.mood }}
+            </span>
+            <span class="px-3 py-1 rounded text-xs font-medium bg-surface-100
+                {% if klci.trend == 'Uptrend' %}text-green-400
+                {% elif klci.trend == 'Downtrend' %}text-red-400
+                {% else %}text-gray-400{% endif %}">
+                {{ klci.trend }}
+            </span>
+        </div>
+    </div>
+    {% endif %}
+
     {% if scan %}
     {% set results = scan.results %}
     {% set buy_count = results|selectattr("signal", "in", ["STRONG BUY", "BUY"])|list|length %}
@@ -75,8 +106,13 @@
 
     <!-- Last Scan Info -->
     <p class="text-xs text-gray-600">
-        Last scan: {{ scan.time.strftime('%d %b %Y, %I:%M %p') }} &bull;
-        {{ scan.total }} stocks analyzed
+        Last scan: {{ scan.time.strftime('%d %b %Y, %I:%M %p') }}
+        {% set delta = (now - scan.time).total_seconds() %}
+        {% if delta < 60 %}(just now)
+        {% elif delta < 3600 %}({{ (delta // 60)|int }} min ago)
+        {% elif delta < 86400 %}({{ (delta // 3600)|int }}h {{ ((delta % 3600) // 60)|int }}m ago)
+        {% else %}({{ (delta // 86400)|int }}d ago){% endif %}
+        &bull; {{ scan.total }} stocks analyzed
     </p>
 
     {% else %}

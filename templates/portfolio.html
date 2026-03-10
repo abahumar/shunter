@@ -28,6 +28,41 @@
     </div>
 
     {% if holdings %}
+
+    <!-- Risk Summary -->
+    {% if summary and summary.count > 0 %}
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="card p-4">
+            <p class="text-xs text-gray-500 uppercase">Positions</p>
+            <p class="text-2xl font-bold text-white mt-1">{{ summary.count }}</p>
+        </div>
+        <div class="card p-4">
+            <p class="text-xs text-gray-500 uppercase">Avg P/L</p>
+            <p class="text-2xl font-bold mt-1 {% if summary.avg_pnl >= 0 %}text-green-400{% else %}text-red-400{% endif %}">
+                {{ "%+.1f"|format(summary.avg_pnl) }}%
+            </p>
+        </div>
+        <div class="card p-4">
+            <p class="text-xs text-gray-500 uppercase">Capital at Risk</p>
+            <p class="text-2xl font-bold text-red-400 mt-1">RM {{ "%.0f"|format(summary.total_risk) }}</p>
+        </div>
+        <div class="card p-4">
+            <p class="text-xs text-gray-500 uppercase">Alerts</p>
+            <p class="text-sm mt-1">
+                {% if summary.sell_count > 0 %}<span class="text-red-400 font-bold">{{ summary.sell_count }} sell</span>{% endif %}
+                {% if summary.sell_count > 0 and summary.high_risk_count > 0 %} · {% endif %}
+                {% if summary.high_risk_count > 0 %}<span class="text-yellow-400 font-bold">{{ summary.high_risk_count }} high risk</span>{% endif %}
+                {% if summary.sell_count == 0 and summary.high_risk_count == 0 %}<span class="text-green-400 font-bold">All clear ✅</span>{% endif %}
+            </p>
+        </div>
+    </div>
+    {% if summary.worst and summary.worst.pnl < -5 %}
+    <div class="card p-3 border-red-900/50">
+        <p class="text-xs text-red-400">⚠️ Worst position: <span class="font-mono">{{ summary.worst.symbol }}</span> ({{ summary.worst.name }}) at <span class="font-bold">{{ "%+.1f"|format(summary.worst.pnl) }}%</span></p>
+    </div>
+    {% endif %}
+    {% endif %}
+
     <!-- Holdings Table -->
     <div class="card overflow-hidden">
         <table class="w-full text-sm">
@@ -38,6 +73,8 @@
                     <th class="text-right p-3">Buy Price</th>
                     <th class="text-right p-3">Current</th>
                     <th class="text-right p-3">P/L %</th>
+                    <th class="text-right p-3">Stop-Loss</th>
+                    <th class="text-center p-3">Risk</th>
                     <th class="text-center p-3">Signal</th>
                     <th class="text-right p-3">Score</th>
                     <th class="text-left p-3">Action</th>
@@ -56,6 +93,19 @@
                     <td class="p-3 text-right font-mono">{{ "%.2f"|format(h.current) if h.current else "-" }}</td>
                     <td class="p-3 text-right font-mono font-bold {% if h.pnl is not none and h.pnl >= 0 %}text-green-400{% elif h.pnl is not none %}text-red-400{% endif %}">
                         {{ "%+.1f"|format(h.pnl) if h.pnl is not none else "-" }}%
+                    </td>
+                    <td class="p-3 text-right font-mono text-red-400 text-xs">
+                        {{ "%.3f"|format(h.stop_loss) if h.stop_loss else "-" }}
+                    </td>
+                    <td class="p-3 text-center">
+                        {% if h.risk %}
+                        <span class="px-1.5 py-0.5 rounded text-xs font-bold
+                            {% if h.risk.level == 'High' %}bg-red-900/50 text-red-400
+                            {% elif h.risk.level == 'Low' %}bg-green-900/50 text-green-400
+                            {% else %}bg-yellow-900/50 text-yellow-400{% endif %}">
+                            {{ h.risk.level }}
+                        </span>
+                        {% else %}-{% endif %}
                     </td>
                     {% if h.analysis %}
                     <td class="p-3 text-center">
@@ -80,6 +130,8 @@
                         {% endif %}
                     </td>
                     {% else %}
+                    <td class="p-3 text-center text-gray-500">-</td>
+                    <td class="p-3 text-center text-gray-500">-</td>
                     <td class="p-3 text-center text-gray-500">-</td>
                     <td class="p-3 text-right text-gray-500">-</td>
                     <td class="p-3 text-gray-500">No data</td>

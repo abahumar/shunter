@@ -3,7 +3,7 @@ Fetch stock price data from Yahoo Finance for Bursa Malaysia stocks.
 """
 
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Callable
 
 import yfinance as yf
 import pandas as pd
@@ -40,6 +40,59 @@ def fetch_stock_info(symbol: str) -> dict:
         }
     except Exception:
         return {}
+
+
+def fetch_batch_download(
+    symbols: List[str],
+    period: str = "1y",
+    chunk_size: int = 50,
+    on_progress: Optional[Callable] = None,
+) -> Dict[str, pd.DataFrame]:
+    """
+    Batch download using yf.download() for much faster fetching.
+    Downloads in chunks to show progress and avoid timeouts.
+    Returns dict mapping symbol -> DataFrame.
+    """
+    results = {}
+    failed = 0
+    processed = 0
+    total = len(symbols)
+
+    chunks = [symbols[i:i + chunk_size] for i in range(0, total, chunk_size)]
+
+    for chunk in chunks:
+        if on_progress:
+            on_progress(processed, total, f"Downloading batch {processed + 1}–{min(processed + chunk_size, total)} of {total}...")
+
+        try:
+            data = yf.download(
+                chunk, period=period, group_by="ticker",
+                actions=True, threads=True, progress=False,
+            )
+
+            for symbol in chunk:
+                try:
+                    if len(chunk) == 1:
+                        df = data
+                    else:
+                        df = data[symbol].copy()
+                        df = df.dropna(how="all")
+
+                    if df is not None and len(df) >= 50:
+                        results[symbol] = df
+                    else:
+                        failed += 1
+                except Exception:
+                    failed += 1
+        except Exception:
+            failed += len(chunk)
+
+        processed += len(chunk)
+
+    if on_progress:
+        on_progress(total, total, f"Downloaded {len(results)} stocks ({failed} failed)")
+
+    return results
 
 
 def fetch_bulk_data(

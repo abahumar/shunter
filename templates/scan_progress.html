@@ -1,0 +1,10 @@
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <h2 class="text-2xl font-bold text-white">Scanner <span class="text-sm text-green-400">☪ Shariah</span></h2>
+    </div>
+
+    <div id="scan-progress-container"
+         hx-get="/scan/status" hx-trigger="every 2s" hx-target="#main-content" hx-swap="innerHTML">
+        {% include "scan_progress_partial.html" %}
+    </div>
+</div>

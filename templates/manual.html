@@ -1,0 +1,375 @@
+<div class="space-y-6 max-w-4xl">
+    <div class="flex items-center justify-between">
+        <h2 class="text-2xl font-bold text-white">📖 User Manual</h2>
+    </div>
+
+    <p class="text-gray-400">Complete guide to using Stock Hunter — your Bursa Malaysia Shariah-compliant stock scanner.</p>
+
+    <!-- Table of Contents -->
+    <div class="card p-4">
+        <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Contents</h3>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
+            <a href="#sec-overview" class="text-accent hover:underline">1. Overview</a>
+            <a href="#sec-dashboard" class="text-accent hover:underline">2. Dashboard</a>
+            <a href="#sec-scanner" class="text-accent hover:underline">3. Scanner</a>
+            <a href="#sec-stock" class="text-accent hover:underline">4. Stock Detail</a>
+            <a href="#sec-sectors" class="text-accent hover:underline">5. Sectors</a>
+            <a href="#sec-spikes" class="text-accent hover:underline">6. Volume Spikes</a>
+            <a href="#sec-portfolio" class="text-accent hover:underline">7. Portfolio</a>
+            <a href="#sec-watchlist" class="text-accent hover:underline">8. Watchlist</a>
+            <a href="#sec-tracker" class="text-accent hover:underline">9. Signal Tracker</a>
+            <a href="#sec-backtest" class="text-accent hover:underline">10. Backtest</a>
+            <a href="#sec-signals" class="text-accent hover:underline">11. Signal Guide</a>
+            <a href="#sec-risk" class="text-accent hover:underline">12. Risk Management</a>
+        </div>
+    </div>
+
+    <!-- 1. Overview -->
+    <div class="card p-5" id="sec-overview">
+        <h3 class="text-lg font-bold text-white mb-3">1. Overview</h3>
+        <p class="text-gray-300 text-sm leading-relaxed mb-3">
+            Stock Hunter scans <strong class="text-white">859 Shariah-compliant stocks</strong> on Bursa Malaysia and ranks them using
+            technical analysis indicators. It generates BUY/SELL signals based on a weighted scoring system combining
+            trend, momentum, volume, and multi-timeframe confirmation.
+        </p>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+            <div class="bg-surface p-3 rounded">
+                <p class="text-gray-500">Data Source</p>
+                <p class="text-white font-semibold">Yahoo Finance</p>
+            </div>
+            <div class="bg-surface p-3 rounded">
+                <p class="text-gray-500">Stocks Covered</p>
+                <p class="text-white font-semibold">859 Shariah</p>
+            </div>
+            <div class="bg-surface p-3 rounded">
+                <p class="text-gray-500">Indicators</p>
+                <p class="text-white font-semibold">12+ Technical</p>
+            </div>
+            <div class="bg-surface p-3 rounded">
+                <p class="text-gray-500">Scan Period</p>
+                <p class="text-white font-semibold">1 Year History</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Dashboard -->
+    <div class="card p-5" id="sec-dashboard">
+        <h3 class="text-lg font-bold text-white mb-3">2. Dashboard</h3>
+        <p class="text-gray-300 text-sm leading-relaxed mb-3">
+            The dashboard is your home screen. It shows:
+        </p>
+        <ul class="text-sm text-gray-300 space-y-2 ml-4 list-disc">
+            <li><strong class="text-white">KLCI Sentiment</strong> — Current KLCI index price, daily change, market mood (Bullish/Bearish/Neutral), and trend direction. Helps you gauge overall market conditions before buying.</li>
+            <li><strong class="text-white">Summary Cards</strong> — Total stocks scanned, number of BUY/WATCH/SELL signals at a glance.</li>
+            <li><strong class="text-white">Top 5 Picks</strong> — The highest-scoring stocks from the latest scan.</li>
+            <li><strong class="text-white">Last Scan Time</strong> — Shows when data was last refreshed and how long ago (e.g. "2h 15m ago").</li>
+        </ul>
+        <div class="mt-3 p-3 bg-surface rounded text-xs text-gray-400">
+            💡 <strong>Tip:</strong> Click "Run Scan" to fetch fresh data. Scan results are cached for 24 hours and persist across app restarts.
+        </div>
+    </div>
+
+    <!-- 3. Scanner -->
+    <div class="card p-5" id="sec-scanner">
+        <h3 class="text-lg font-bold text-white mb-3">3. Scanner</h3>
+        <p class="text-gray-300 text-sm leading-relaxed mb-3">
+            The main scanning page displays all analyzed stocks in a sortable, filterable table.
+        </p>
+
+        <h4 class="text-sm font-semibold text-accent mt-4 mb-2">Filters</h4>
+        <ul class="text-sm text-gray-300 space-y-1 ml-4 list-disc">
+            <li><strong class="text-white">Signal buttons</strong> — Filter by All / BUY / WATCH / SELL signals</li>
+            <li><strong class="text-white">Presets</strong> — One-click filters: Growth (score ≥30 + BUY), Dividend (yield ≥4%), Momentum (RSI ≥50, ADX ≥20, Vol ≥1.5x), Penny (&lt;RM1)</li>
+            <li><strong class="text-white">Search</strong> — Type any symbol or company name</li>
+            <li><strong class="text-white">Sector dropdown</strong> — Filter by sector (Technology, Consumer, etc.)</li>
+            <li><strong class="text-white">Price range</strong> — Set min/max price in RM</li>
+        </ul>
+
+        <h4 class="text-sm font-semibold text-accent mt-4 mb-2">Sorting</h4>
+        <p class="text-sm text-gray-300">Click any column header (Score, Price, RSI, ADX, Vol, Div%, Risk) to sort ascending/descending. The ▲▼ arrow shows current sort direction.</p>
+
+        <h4 class="text-sm font-semibold text-accent mt-4 mb-2">Pagination</h4>
+        <p class="text-sm text-gray-300">Results show 50 per page by default. Use Prev/Next buttons or change to 100, 200, or Show All from the dropdown.</p>
+
+        <h4 class="text-sm font-semibold text-accent mt-4 mb-2">Table Columns</h4>
+        <div class="overflow-x-auto">
+            <table class="text-xs text-gray-300 w-full mt-1">
+                <tr class="border-b border-surface-100">
+                    <td class="py-1.5 pr-3 text-white font-semibold w-24">Price</td>
+                    <td class="py-1.5">Last closing price in RM</td>
+                </tr>
+                <tr class="border-b border-surface-100">
+                    <td class="py-1.5 pr-3 text-white font-semibold">Signal</td>
+                    <td class="py-1.5">STRONG BUY → BUY → WATCH → HOLD → SELL → STRONG SELL</td>
+                </tr>
+                <tr class="border-b border-surface-100">
+                    <td class="py-1.5 pr-3 text-white font-semibold">Score</td>
+                    <td class="py-1.5">Net score from weighted indicators (-100 to +100). Higher = more bullish</td>
+                </tr>
+                <tr class="border-b border-surface-100">
+                    <td class="py-1.5 pr-3 text-white font-semibold">RSI</td>
+                    <td class="py-1.5">Relative Strength Index (14-period). Below 30 = oversold, above 70 = overbought</td>
+                </tr>
+                <tr class="border-b border-surface-100">
+                    <td class="py-1.5 pr-3 text-white font-semibold">ADX</td>
+                    <td class="py-1.5">Average Directional Index. Above 25 = strong trend, below 15 = no clear trend</td>
+                </tr>
+                <tr class="border-b border-surface-100">
+                    <td class="py-1.5 pr-3 text-white font-semibold">Vol</td>
+                    <td class="py-1.5">Volume ratio vs 20-day average. Above 1.5x = unusual activity</td>
+                </tr>
+                <tr class="border-b border-surface-100">
+                    <td class="py-1.5 pr-3 text-white font-semibold">Div %</td>
+                    <td class="py-1.5">Trailing 12-month dividend yield. 💰 shown when ≥4%</td>
+                </tr>
+                <tr>
+                    <td class="py-1.5 pr-3 text-white font-semibold">Risk</td>
+                    <td class="py-1.5">Risk level: <span class="text-green-400">Low</span> / <span class="text-yellow-400">Medium</span> / <span class="text-red-400">High</span> based on volatility, RSI, volume, trend</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <!-- 4. Stock Detail -->
+    <div class="card p-5" id="sec-stock">
+        <h3 class="text-lg font-bold text-white mb-3">4. Stock Detail</h3>
+        <p class="text-gray-300 text-sm leading-relaxed mb-3">
+            Click any stock row in the scanner to open its detail page. Here you'll find:
+        </p>
+        <ul class="text-sm text-gray-300 space-y-2 ml-4 list-disc">
+            <li><strong class="text-white">Interactive Chart</strong> — Candlestick chart with EMA 20/50/200, Bollinger Bands, volume bars, MACD, and RSI sub-charts.</li>
+            <li><strong class="text-white">Technical Indicators</strong> — Full breakdown of all computed indicators with current values.</li>
+            <li><strong class="text-white">Signal Analysis</strong> — Detailed BUY/SELL reasons explaining why the score was assigned.</li>
+            <li><strong class="text-white">Support & Resistance</strong> — Key price levels identified from recent price action.</li>
+            <li><strong class="text-white">Entry Plan</strong> — ATR-based stop-loss (price − 2×ATR), take-profit (price + 3×ATR), and risk/reward ratio.</li>
+            <li><strong class="text-white">Position Sizing</strong> — Suggested lot size based on RM10,000 capital and Bursa's 100-share lot.</li>
+            <li><strong class="text-white">Risk Score</strong> — Detailed risk assessment with specific warnings.</li>
+        </ul>
+    </div>
+
+    <!-- 5. Sectors -->
+    <div class="card p-5" id="sec-sectors">
+        <h3 class="text-lg font-bold text-white mb-3">5. Sectors</h3>
+        <p class="text-gray-300 text-sm leading-relaxed">
+            Shows sector rotation analysis across 11 Bursa Malaysia sectors (Technology, Consumer, Industrial, Property, Finance, etc.).
+            Each sector displays average performance, number of BUY signals, and trending direction.
+            Use this to identify which sectors are leading/lagging the market.
+        </p>
+    </div>
+
+    <!-- 6. Volume Spikes -->
+    <div class="card p-5" id="sec-spikes">
+        <h3 class="text-lg font-bold text-white mb-3">6. Volume Spikes</h3>
+        <p class="text-gray-300 text-sm leading-relaxed">
+            Lists stocks with unusual volume activity (significantly above their 20-day average).
+            Volume spikes often precede major price moves — they can signal institutional buying/selling,
+            news catalysts, or breakouts. Sorted by volume ratio (highest spike first).
+        </p>
+        <div class="mt-3 p-3 bg-surface rounded text-xs text-gray-400">
+            💡 <strong>Tip:</strong> A volume spike combined with a BUY signal is a strong confirmation. Check the stock detail page for full analysis.
+        </div>
+    </div>
+
+    <!-- 7. Portfolio -->
+    <div class="card p-5" id="sec-portfolio">
+        <h3 class="text-lg font-bold text-white mb-3">7. Portfolio</h3>
+        <p class="text-gray-300 text-sm leading-relaxed mb-3">
+            Track your actual stock holdings with real-time P&L.
+        </p>
+        <h4 class="text-sm font-semibold text-accent mt-3 mb-2">How to use</h4>
+        <ol class="text-sm text-gray-300 space-y-1 ml-4 list-decimal">
+            <li>Enter the stock symbol (e.g. <code class="text-accent">MAYBANK</code> or <code class="text-accent">1155.KL</code>)</li>
+            <li>Enter your buy price (RM) and quantity (number of shares)</li>
+            <li>Click "Add to Portfolio"</li>
+        </ol>
+        <h4 class="text-sm font-semibold text-accent mt-3 mb-2">What you'll see</h4>
+        <ul class="text-sm text-gray-300 space-y-1 ml-4 list-disc">
+            <li><strong class="text-white">Risk Summary Cards</strong> — Total positions, average P&L, capital at risk, sell/high-risk alerts</li>
+            <li><strong class="text-white">P&L %</strong> — Percentage gain/loss since your buy price</li>
+            <li><strong class="text-white">Stop-Loss</strong> — Suggested stop-loss level (2× ATR below current price)</li>
+            <li><strong class="text-white">Risk Level</strong> — Per-holding risk badge</li>
+            <li><strong class="text-white">Current Signal</strong> — Latest signal for each holding (watch for SELL signals!)</li>
+        </ul>
+    </div>
+
+    <!-- 8. Watchlist -->
+    <div class="card p-5" id="sec-watchlist">
+        <h3 class="text-lg font-bold text-white mb-3">8. Watchlist</h3>
+        <p class="text-gray-300 text-sm leading-relaxed mb-3">
+            Track stocks you're interested in without buying yet. Set price targets to get visual alerts.
+        </p>
+        <ul class="text-sm text-gray-300 space-y-1 ml-4 list-disc">
+            <li><strong class="text-white">Target High</strong> — Set an upper price target. When the stock reaches this price, a 🔔 alert badge appears.</li>
+            <li><strong class="text-white">Target Low</strong> — Set a lower price target for buying opportunities.</li>
+            <li><strong class="text-white">Notes</strong> — Add your own notes (e.g. "Wait for breakout above RM2.50").</li>
+        </ul>
+    </div>
+
+    <!-- 9. Signal Tracker -->
+    <div class="card p-5" id="sec-tracker">
+        <h3 class="text-lg font-bold text-white mb-3">9. Signal Tracker</h3>
+        <p class="text-gray-300 text-sm leading-relaxed mb-3">
+            Tracks how well BUY signals performed over time. After a BUY signal is generated, the tracker
+            checks the actual stock price at 7, 14, and 30 days later.
+        </p>
+        <ul class="text-sm text-gray-300 space-y-1 ml-4 list-disc">
+            <li><strong class="text-white">Win Rate</strong> — Percentage of signals that were profitable at each time period</li>
+            <li><strong class="text-white">Average Return</strong> — Mean return across all tracked signals</li>
+            <li><strong class="text-white">Best/Worst</strong> — Top and bottom performing signals</li>
+        </ul>
+        <div class="mt-3 p-3 bg-surface rounded text-xs text-gray-400">
+            💡 <strong>Tip:</strong> If the 7-day win rate is consistently above 50%, the scanner's signals are reliable. Below 50% means you should use additional confirmation before buying.
+        </div>
+    </div>
+
+    <!-- 10. Backtest -->
+    <div class="card p-5" id="sec-backtest">
+        <h3 class="text-lg font-bold text-white mb-3">10. Backtest</h3>
+        <p class="text-gray-300 text-sm leading-relaxed mb-3">
+            Test the scanner's strategy against historical data to see how it would have performed.
+        </p>
+        <h4 class="text-sm font-semibold text-accent mt-3 mb-2">Parameters</h4>
+        <div class="overflow-x-auto">
+            <table class="text-xs text-gray-300 w-full">
+                <tr class="border-b border-surface-100">
+                    <td class="py-1.5 pr-3 text-white font-semibold w-32">Lookback Days</td>
+                    <td class="py-1.5">How many days of history to simulate (default: 60)</td>
+                </tr>
+                <tr class="border-b border-surface-100">
+                    <td class="py-1.5 pr-3 text-white font-semibold">Top N Stocks</td>
+                    <td class="py-1.5">Number of top-scoring stocks to "buy" per scan (default: 10)</td>
+                </tr>
+                <tr class="border-b border-surface-100">
+                    <td class="py-1.5 pr-3 text-white font-semibold">Scan Interval</td>
+                    <td class="py-1.5">Days between each simulated scan (default: 5)</td>
+                </tr>
+                <tr class="border-b border-surface-100">
+                    <td class="py-1.5 pr-3 text-white font-semibold">Stop-Loss %</td>
+                    <td class="py-1.5">Auto-sell if stock drops this much (default: -10%)</td>
+                </tr>
+                <tr>
+                    <td class="py-1.5 pr-3 text-white font-semibold">Price Range</td>
+                    <td class="py-1.5">Only include stocks within this price range</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <!-- 11. Signal Guide -->
+    <div class="card p-5" id="sec-signals">
+        <h3 class="text-lg font-bold text-white mb-3">11. Understanding Signals</h3>
+        <p class="text-gray-300 text-sm leading-relaxed mb-3">
+            Signals are computed from a weighted scoring system:
+        </p>
+        <div class="overflow-x-auto">
+            <table class="text-xs text-gray-300 w-full">
+                <thead>
+                    <tr class="border-b border-surface-100 text-gray-500">
+                        <th class="text-left py-2">Indicator</th>
+                        <th class="text-center py-2">BUY Weight</th>
+                        <th class="text-center py-2">SELL Weight</th>
+                        <th class="text-left py-2">What it Measures</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="border-b border-surface-100">
+                        <td class="py-1.5 text-white">EMA Trend</td>
+                        <td class="py-1.5 text-center text-green-400">+20</td>
+                        <td class="py-1.5 text-center text-red-400">-20</td>
+                        <td class="py-1.5">Price above/below EMA 20/50/200</td>
+                    </tr>
+                    <tr class="border-b border-surface-100">
+                        <td class="py-1.5 text-white">MACD</td>
+                        <td class="py-1.5 text-center text-green-400">+15</td>
+                        <td class="py-1.5 text-center text-red-400">-15</td>
+                        <td class="py-1.5">MACD crossover signals</td>
+                    </tr>
+                    <tr class="border-b border-surface-100">
+                        <td class="py-1.5 text-white">RSI</td>
+                        <td class="py-1.5 text-center text-green-400">+15</td>
+                        <td class="py-1.5 text-center text-red-400">-15</td>
+                        <td class="py-1.5">Oversold/overbought momentum</td>
+                    </tr>
+                    <tr class="border-b border-surface-100">
+                        <td class="py-1.5 text-white">ADX</td>
+                        <td class="py-1.5 text-center text-green-400">+15</td>
+                        <td class="py-1.5 text-center text-red-400">-15</td>
+                        <td class="py-1.5">Trend strength + direction (DI+/DI-)</td>
+                    </tr>
+                    <tr class="border-b border-surface-100">
+                        <td class="py-1.5 text-white">Volume</td>
+                        <td class="py-1.5 text-center text-green-400">+15</td>
+                        <td class="py-1.5 text-center text-red-400">-5</td>
+                        <td class="py-1.5">Volume above average confirms move</td>
+                    </tr>
+                    <tr class="border-b border-surface-100">
+                        <td class="py-1.5 text-white">52-Week</td>
+                        <td class="py-1.5 text-center text-green-400">+5</td>
+                        <td class="py-1.5 text-center text-red-400">-10</td>
+                        <td class="py-1.5">Position within 52-week range</td>
+                    </tr>
+                    <tr class="border-b border-surface-100">
+                        <td class="py-1.5 text-white">Bollinger</td>
+                        <td class="py-1.5 text-center text-green-400">+5</td>
+                        <td class="py-1.5 text-center text-red-400">-5</td>
+                        <td class="py-1.5">Price near upper/lower band</td>
+                    </tr>
+                    <tr>
+                        <td class="py-1.5 text-white">Multi-Timeframe</td>
+                        <td class="py-1.5 text-center text-green-400">+10</td>
+                        <td class="py-1.5 text-center text-red-400">-10</td>
+                        <td class="py-1.5">Weekly timeframe confirmation</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <h4 class="text-sm font-semibold text-accent mt-4 mb-2">Signal Thresholds</h4>
+        <div class="flex flex-wrap gap-2 text-xs">
+            <span class="signal-strong-buy px-2 py-1 rounded">STRONG BUY: score ≥ 50</span>
+            <span class="signal-buy px-2 py-1 rounded bg-surface">BUY: score ≥ 25</span>
+            <span class="signal-watch px-2 py-1 rounded bg-surface">WATCH: score ≥ 10</span>
+            <span class="signal-hold px-2 py-1 rounded bg-surface">HOLD: score &gt; -10</span>
+            <span class="signal-sell px-2 py-1 rounded bg-surface">SELL: score ≤ -10</span>
+            <span class="signal-strong-sell px-2 py-1 rounded">STRONG SELL: score ≤ -30</span>
+        </div>
+    </div>
+
+    <!-- 12. Risk Management -->
+    <div class="card p-5" id="sec-risk">
+        <h3 class="text-lg font-bold text-white mb-3">12. Risk Management</h3>
+        <p class="text-gray-300 text-sm leading-relaxed mb-3">
+            Stock Hunter includes several tools to help minimize risk:
+        </p>
+
+        <h4 class="text-sm font-semibold text-accent mt-3 mb-2">Risk Score</h4>
+        <p class="text-sm text-gray-300 mb-2">Each stock is rated <span class="text-green-400 font-bold">Low</span> / <span class="text-yellow-400 font-bold">Medium</span> / <span class="text-red-400 font-bold">High</span> based on:</p>
+        <ul class="text-sm text-gray-300 space-y-1 ml-4 list-disc">
+            <li>ATR volatility &gt; 5% of price (+3 points)</li>
+            <li>RSI &gt; 75 overbought (+3 points)</li>
+            <li>ADX &lt; 15 no clear trend (+2 points)</li>
+            <li>Volume &lt; 0.5× average low liquidity (+2 points)</li>
+            <li>Near 52-week high (+3 points)</li>
+        </ul>
+        <p class="text-xs text-gray-500 mt-2">Score ≥5 = High risk, ≥2 = Medium, &lt;2 = Low</p>
+
+        <h4 class="text-sm font-semibold text-accent mt-4 mb-2">Entry Plan (ATR-based)</h4>
+        <ul class="text-sm text-gray-300 space-y-1 ml-4 list-disc">
+            <li><strong class="text-white">Stop-Loss</strong> = Current price − (2 × ATR) — limits your downside</li>
+            <li><strong class="text-white">Take-Profit</strong> = Current price + (3 × ATR) — targets 1.5:1 reward-to-risk</li>
+            <li><strong class="text-white">Risk/Reward Ratio</strong> — Green if ≥1.5 (good), red if &lt;1 (avoid)</li>
+        </ul>
+
+        <h4 class="text-sm font-semibold text-accent mt-4 mb-2">⚠️ Risk Warnings on Scanner</h4>
+        <p class="text-sm text-gray-300">Yellow ⚠️ icons appear next to each stock with specific warnings: overbought RSI, low volume, near 52-week high, high volatility, or no clear trend.</p>
+
+        <div class="mt-4 p-3 bg-yellow-900/20 border border-yellow-800/30 rounded text-xs text-yellow-300">
+            ⚠️ <strong>Disclaimer:</strong> Stock Hunter is a technical analysis tool, not financial advice. Always do your own research (DYOR),
+            consider fundamental analysis, and never invest more than you can afford to lose. Past performance does not guarantee future results.
+        </div>
+    </div>
+
+    <p class="text-xs text-gray-600 text-center pb-4">
+        Stock Hunter v1.0 — Bursa Malaysia Shariah-Compliant Scanner
+    </p>
+</div>

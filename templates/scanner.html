@@ -131,6 +131,7 @@
                     <th class="text-left p-3 cursor-pointer hover:text-accent select-none" onclick="sortTable('name')">Name <span class="sort-icon" data-col="name"></span></th>
                     <th class="text-right p-3 cursor-pointer hover:text-accent select-none" onclick="sortTable('price')">Price (RM) <span class="sort-icon" data-col="price"></span></th>
                     <th class="text-center p-3 cursor-pointer hover:text-accent select-none" onclick="sortTable('signal')">Signal <span class="sort-icon" data-col="signal"></span></th>
+                    <th class="text-center p-3 cursor-pointer hover:text-accent select-none" onclick="sortTable('grade')">Grade <span class="sort-icon" data-col="grade"></span></th>
                     <th class="text-right p-3 cursor-pointer hover:text-accent select-none" onclick="sortTable('score')">Score <span class="sort-icon" data-col="score"></span></th>
                     <th class="text-right p-3 cursor-pointer hover:text-accent select-none" onclick="sortTable('rsi')">RSI <span class="sort-icon" data-col="rsi"></span></th>
                     <th class="text-right p-3 cursor-pointer hover:text-accent select-none" onclick="sortTable('adx')">ADX <span class="sort-icon" data-col="adx"></span></th>
@@ -150,6 +151,7 @@
                     data-sector="{{ r.sector }}"
                     data-divyield="{{ "%.1f"|format(r.div_yield|default(0)) }}"
                     data-score="{{ r.net_score }}"
+                    data-grade="{{ r.grade|default('C') }}"
                     data-rsi="{{ "%.0f"|format(r.rsi) if r.rsi else '0' }}"
                     data-adx="{{ "%.0f"|format(r.adx) if r.adx else '0' }}"
                     data-volratio="{{ "%.1f"|format(r.volume_ratio) }}"
@@ -179,6 +181,17 @@
                         {% if r.confirmed %}
                         <span class="ml-1 px-1.5 py-0.5 rounded text-xs font-bold bg-blue-900/50 text-blue-400" title="Confirmed: BUY in consecutive scans">✓</span>
                         {% endif %}
+                    </td>
+                    <td class="p-3 text-center">
+                        <span class="px-2 py-0.5 rounded text-xs font-extrabold
+                            {% if r.grade|default('C') == 'A' %}bg-green-900/50 text-green-400
+                            {% elif r.grade|default('C') == 'B' %}bg-blue-900/50 text-blue-400
+                            {% elif r.grade|default('C') == 'C' %}bg-yellow-900/50 text-yellow-400
+                            {% elif r.grade|default('C') == 'D' %}bg-orange-900/50 text-orange-400
+                            {% else %}bg-red-900/50 text-red-400{% endif %}"
+                            title="{{ r.grade_label|default('') }} — {{ r.grade_factors|default([])|join(', ') }}">
+                            {{ r.grade|default('C') }}
+                        </span>
                     </td>
                     <td class="p-3 text-right font-mono">{{ r.net_score }}</td>
                     <td class="p-3 text-right font-mono">{{ "%.0f"|format(r.rsi) if r.rsi else "-" }}</td>
@@ -220,6 +233,7 @@
     let sortAsc = true;
     const signalOrder = {'STRONG BUY':5,'BUY':4,'WATCH':3,'HOLD':2,'SELL':1,'STRONG SELL':0};
     const riskOrder = {'High':3,'Medium':2,'Low':1};
+    const gradeOrder = {'A':5,'B':4,'C':3,'D':2,'F':1};
 
     function filterSignals(type) {
         activeSignal = type;
@@ -274,9 +288,10 @@
             if (col === 'symbol') { va = a.children[1].textContent.trim(); vb = b.children[1].textContent.trim(); return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va); }
             if (col === 'name') { va = a.children[2].textContent.trim(); vb = b.children[2].textContent.trim(); return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va); }
             if (col === 'signal') { va = signalOrder[a.dataset.signal]||0; vb = signalOrder[b.dataset.signal]||0; }
+            else if (col === 'grade') { va = gradeOrder[a.dataset.grade]||0; vb = gradeOrder[b.dataset.grade]||0; }
             else if (col === 'risk') {
-                const ra = a.querySelector('td:nth-child(12) span');
-                const rb = b.querySelector('td:nth-child(12) span');
+                const ra = a.querySelector('td:nth-child(14) span');
+                const rb = b.querySelector('td:nth-child(14) span');
                 va = riskOrder[(ra?ra.textContent.trim():'')]||0;
                 vb = riskOrder[(rb?rb.textContent.trim():'')]||0;
             }

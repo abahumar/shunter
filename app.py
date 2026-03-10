@@ -20,7 +20,8 @@ from scanner.market_sentiment import fetch_market_sentiment
 from scanner.db import (
     add_stock, remove_stock, get_portfolio,
     add_to_watchlist, remove_from_watchlist, get_watchlist, check_alerts,
-    get_tracker_stats, get_recent_signals,
+    get_tracker_stats, get_recent_signals, log_signals, update_outcomes,
+    get_win_rate_by_score,
 )
 from scanner.sectors import analyze_sectors, get_sector
 from scanner.advanced import (
@@ -30,6 +31,7 @@ from scanner.advanced import (
     calculate_position_size,
     compute_risk_score,
     calculate_entry_plan,
+    compute_confidence_grade,
 )
 from scanner.backtest import backtest as run_backtest
 
@@ -271,6 +273,20 @@ def _run_scan(force=False):
             r["net_score"] += 10
             r["signal"] = classify_net_score(r["net_score"])
 
+    # Compute confidence grade for each result
+    for r in results:
+        grade_info = compute_confidence_grade(
+            net_score=r["net_score"],
+            volume_ratio=r.get("volume_ratio", 0),
+            mtf_desc=r.get("mtf", ""),
+            risk_level=r.get("risk_level", "Medium"),
+            confirmed=r.get("confirmed", False),
+        )
+        r["grade"] = grade_info["grade"]
+        r["grade_label"] = grade_info["label"]
+        r["grade_points"] = grade_info["points"]
+        r["grade_factors"] = grade_info["factors"]
+
     # Save current signals for next scan's confirmation
     _save_prev_signals({r["symbol"]: r["signal"] for r in results})
 
@@ -286,6 +302,11 @@ def _run_scan(force=False):
     }
     _cache_set(cache_key, scan_result, SCAN_TTL)
     _save_scan_to_disk(scan_result)
+
+    # Log BUY signals to tracker and update past outcomes
+    buy_signals = [r for r in results if r["signal"] in ("BUY", "STRONG BUY")]
+    log_signals(buy_signals)
+    update_outcomes()
 
     _scan_progress["status"] = "done"
     _scan_progress["running"] = False
@@ -579,7 +600,8 @@ def tracker():
     """Signal tracker page."""
     stats = get_tracker_stats()
     recent = get_recent_signals(20)
-    return _render("tracker.html", request, stats=stats, recent=recent)
+    score_ranges = get_win_rate_by_score()
+    return _render("tracker.html", request, stats=stats, recent=recent, score_ranges=score_ranges)
 
 
 @app.route("/backtest")

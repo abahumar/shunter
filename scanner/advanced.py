@@ -207,3 +207,196 @@ def calculate_position_size(
         "pct_of_capital": (amount / capital) * 100 if capital > 0 else 0,
         "price": price,
     }
+
+
+def compute_risk_score(indicators: dict) -> dict:
+    """
+    Compute a risk level for a stock entry based on current indicators.
+    Returns dict with risk_level (Low/Medium/High), risk_points, and warnings.
+    Higher points = more risk.
+    """
+    points = 0
+    warnings = []
+
+    close = indicators.get("close", 0)
+    atr = indicators.get("atr", 0)
+    rsi = indicators.get("rsi", 50)
+    adx = indicators.get("adx", 20)
+    volume = indicators.get("volume", 0)
+    vol_sma = indicators.get("volume_sma_20", 1)
+    high_52w = indicators.get("high_52w", 0)
+    low_52w = indicators.get("low_52w", 0)
+
+    # ATR volatility (ATR as % of price)
+    if close > 0 and atr > 0:
+        atr_pct = (atr / close) * 100
+        if atr_pct > 5:
+            points += 3
+            warnings.append("High volatility (ATR >5%)")
+        elif atr_pct > 3:
+            points += 1
+
+    # RSI extremes
+    if rsi and rsi > 75:
+        points += 3
+        warnings.append("Overbought (RSI >75)")
+    elif rsi and rsi > 70:
+        points += 1
+    elif rsi and rsi < 25:
+        points += 2
+        warnings.append("Deeply oversold (RSI <25)")
+
+    # Weak trend
+    if adx and adx < 15:
+        points += 2
+        warnings.append("No clear trend (ADX <15)")
+
+    # Low liquidity
+    vol_ratio = volume / vol_sma if vol_sma and vol_sma > 0 else 1
+    if vol_ratio < 0.5:
+        points += 2
+        warnings.append("Low volume (<0.5x avg)")
+
+    # Near 52-week high
+    if high_52w and low_52w and high_52w > low_52w and close > 0:
+        position_52w = (close - low_52w) / (high_52w - low_52w) * 100
+        if position_52w > 95:
+            points += 3
+            warnings.append("At 52-week high (>95%)")
+        elif position_52w > 90:
+            points += 1
+            warnings.append("Near 52-week high (>90%)")
+
+    # Classify
+    if points >= 5:
+        level = "High"
+    elif points >= 2:
+        level = "Medium"
+    else:
+        level = "Low"
+
+    return {
+        "level": level,
+        "points": points,
+        "warnings": warnings,
+    }
+
+
+def compute_confidence_grade(
+    net_score: int,
+    volume_ratio: float = 0,
+    mtf_desc: str = "",
+    risk_level: str = "Medium",
+    confirmed: bool = False,
+) -> dict:
+    """
+    Compute a single confidence grade (A-F) combining multiple factors.
+    Helps users quickly assess signal quality at a glance.
+
+    Returns dict with grade, label, color class, and breakdown.
+    """
+    points = 0
+    factors = []
+
+    # 1. Score strength (0-40 points)
+    if net_score >= 70:
+        points += 40
+        factors.append("Very strong score")
+    elif net_score >= 55:
+        points += 30
+        factors.append("Strong score")
+    elif net_score >= 35:
+        points += 20
+        factors.append("Moderate score")
+    elif net_score >= 10:
+        points += 10
+        factors.append("Weak score")
+    else:
+        factors.append("Poor score")
+
+    # 2. Volume confirmation (0-20 points)
+    if volume_ratio >= 2.0:
+        points += 20
+        factors.append("Strong volume")
+    elif volume_ratio >= 1.5:
+        points += 15
+        factors.append("Good volume")
+    elif volume_ratio >= 1.0:
+        points += 8
+        factors.append("Average volume")
+    else:
+        factors.append("Weak volume")
+
+    # 3. Multi-timeframe alignment (0-20 points)
+    if "both bullish" in mtf_desc.lower():
+        points += 20
+        factors.append("MTF aligned")
+    elif "dip buy" in mtf_desc.lower():
+        points += 10
+        factors.append("Weekly bullish")
+    elif "both bearish" in mtf_desc.lower():
+        factors.append("MTF bearish")
+    elif "downtrend" in mtf_desc.lower():
+        factors.append("Weekly downtrend")
+    else:
+        points += 5
+
+    # 4. Risk level (0-10 points)
+    if risk_level == "Low":
+        points += 10
+        factors.append("Low risk")
+    elif risk_level == "Medium":
+        points += 5
+    else:
+        factors.append("High risk")
+
+    # 5. Consecutive confirmation bonus (0-10 points)
+    if confirmed:
+        points += 10
+        factors.append("Confirmed")
+
+    # Grade classification (100-point scale)
+    if points >= 75:
+        grade, label = "A", "High Confidence"
+    elif points >= 55:
+        grade, label = "B", "Good"
+    elif points >= 35:
+        grade, label = "C", "Moderate"
+    elif points >= 20:
+        grade, label = "D", "Weak"
+    else:
+        grade, label = "F", "Avoid"
+
+    return {
+        "grade": grade,
+        "label": label,
+        "points": points,
+        "factors": factors,
+    }
+
+
+def calculate_entry_plan(close: float, atr: float, atr_multiplier: float = 2.0) -> Optional[dict]:
+    """
+    Calculate dynamic stop-loss and take-profit based on ATR.
+    Standard: stop = 2×ATR below, target = 3×ATR above (1.5:1 R/R).
+    """
+    if not atr or atr <= 0 or not close or close <= 0:
+        return None
+
+    stop_loss = close - (atr_multiplier * atr)
+    take_profit = close + (atr_multiplier * 1.5 * atr)
+    risk_per_share = close - stop_loss
+    reward_per_share = take_profit - close
+    rr_ratio = reward_per_share / risk_per_share if risk_per_share > 0 else 0
+
+    return {
+        "entry": close,
+        "stop_loss": max(stop_loss, 0.005),  # min 0.5 sen
+        "take_profit": take_profit,
+        "risk_per_share": risk_per_share,
+        "reward_per_share": reward_per_share,
+        "rr_ratio": rr_ratio,
+        "atr": atr,
+        "stop_pct": (risk_per_share / close) * 100 if close > 0 else 0,
+        "target_pct": (reward_per_share / close) * 100 if close > 0 else 0,
+    }
