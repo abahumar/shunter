@@ -189,7 +189,8 @@
                             {% elif r.signal == 'WATCH' %}signal-watch
                             {% elif r.signal == 'SELL' %}signal-sell
                             {% elif r.signal == 'STRONG SELL' %}signal-strong-sell
-                            {% else %}signal-hold{% endif %}">
+                            {% else %}signal-hold{% endif %}"
+                            title="{{ r.mini_summary|default('') }}">
                             {{ r.signal }}
                         </span>
                         {% if r.confirmed %}

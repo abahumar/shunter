@@ -37,6 +37,7 @@ from scanner.advanced import (
 )
 from scanner.vpa import analyze_vpa
 from scanner.backtest import backtest as run_backtest
+from scanner.summary import format_trade_summary
 
 app = Flask(__name__)
 
@@ -188,6 +189,25 @@ def _render(template, request, **kwargs):
 
 # ── Scan engine (shared by dashboard and scanner page) ──
 
+
+def _build_mini_summary(r: dict) -> str:
+    """Build a one-liner trade summary for scanner tooltip."""
+    parts = [r.get("signal", "HOLD"), f"Grade {r.get('grade', '?')}"]
+    rsi = r.get("rsi")
+    if rsi is not None:
+        parts.append(f"RSI {rsi:.0f}")
+    adx = r.get("adx")
+    if adx is not None:
+        parts.append(f"ADX {adx:.0f}")
+    vpa = r.get("vpa_pattern", "")
+    if vpa:
+        parts.append(f"VPA: {vpa}")
+    risk = r.get("risk_level", "")
+    if risk:
+        parts.append(f"Risk: {risk}")
+    return " | ".join(parts)
+
+
 def _run_scan(force=False):
     """Run full market scan, using cache if available."""
     cache_key = "scan_all"
@@ -324,6 +344,9 @@ def _run_scan(force=False):
             (r["grade"] == "C" and r["emerging"])
         )
 
+        # Mini trade summary for scanner tooltip
+        r["mini_summary"] = _build_mini_summary(r)
+
     # Save current signals for next scan's confirmation
     _save_prev_signals({r["symbol"]: r["signal"] for r in results})
 
@@ -444,6 +467,20 @@ def stock_detail(symbol):
         vol_sma = ind.get("volume_sma_20", 0)
         vol_ratio = ind["volume"] / vol_sma if vol_sma and vol_sma > 0 else 0
 
+        # VPA analysis
+        vpa = analyze_vpa(df)
+        vpa_adj = max(-15, min(15, vpa.get("vpa_score", 0)))
+        analysis["net_score"] += vpa_adj
+
+        # Confidence grade
+        grade_info = compute_confidence_grade(
+            net_score=analysis["net_score"],
+            volume_ratio=vol_ratio,
+            mtf_desc=mtf_desc,
+            risk_level=risk.get("level", "Medium"),
+            confirmed=False,
+        )
+
         detail = {
             "symbol": symbol,
             "name": get_symbol_name(symbol),
@@ -459,7 +496,13 @@ def stock_detail(symbol):
             "sector": get_sector(symbol),
             "shariah": True,
             "volume_ratio": vol_ratio,
+            "vpa": vpa,
+            "grade": grade_info["grade"],
+            "grade_label": grade_info["label"],
         }
+
+        # Trade summary
+        detail["summary"] = format_trade_summary(detail)
         _cache_set(cache_key, detail, STOCK_TTL)
 
     return _render("stock_detail.html", request, detail=detail, symbol=symbol)
