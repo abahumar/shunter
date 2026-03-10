@@ -60,6 +60,9 @@
         <button onclick="filterSignals('emerging')" class="filter-btn px-3 py-1 rounded text-xs font-medium bg-surface-100 text-purple-400">
             🌱 Emerging ({{ results|selectattr("emerging", "equalto", true)|list|length }})
         </button>
+        <button onclick="filterSignals('strategy')" class="filter-btn px-3 py-1 rounded text-xs font-medium bg-surface-100 text-amber-400">
+            🎯 My Strategy ({{ results|selectattr("strategy_match", "equalto", true)|list|length }})
+        </button>
     </div>
 
     <!-- Preset Filters -->
@@ -151,6 +154,7 @@
                     data-signal="{{ r.signal }}"
                     data-confirmed="{{ 'true' if r.confirmed else 'false' }}"
                     data-emerging="{{ 'true' if r.emerging else 'false' }}"
+                    data-strategy="{{ 'true' if r.strategy_match else 'false' }}"
                     data-price="{{ "%.2f"|format(r.close) }}"
                     data-sector="{{ r.sector }}"
                     data-divyield="{{ "%.1f"|format(r.div_yield|default(0)) }}"
@@ -184,6 +188,9 @@
                         </span>
                         {% if r.confirmed %}
                         <span class="ml-1 px-1.5 py-0.5 rounded text-xs font-bold bg-blue-900/50 text-blue-400" title="Confirmed: BUY in consecutive scans">✓</span>
+                        {% endif %}
+                        {% if r.strategy_match %}
+                        <span class="ml-1 px-1.5 py-0.5 rounded text-xs font-bold bg-amber-900/50 text-amber-400" title="Strategy Match: {{ r.grade }}{% if r.emerging %} Emerging{% endif %} + {{ r.signal }}">🎯</span>
                         {% endif %}
                     </td>
                     <td class="p-3 text-center">
@@ -343,6 +350,7 @@
             else if (activeSignal === 'sell') show = (signal === 'SELL' || signal === 'STRONG SELL');
             else if (activeSignal === 'confirmed') show = row.dataset.confirmed === 'true';
             else if (activeSignal === 'emerging') show = row.dataset.emerging === 'true';
+            else if (activeSignal === 'strategy') show = row.dataset.strategy === 'true';
 
             if (show && activePreset === 'growth') show = score >= 30 && (signal === 'STRONG BUY' || signal === 'BUY');
             else if (show && activePreset === 'dividend') show = divYield >= 4;

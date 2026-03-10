@@ -59,6 +59,7 @@ def backtest(
     signal_confirmation: bool = True,
     emerging_only: bool = False,
     max_hold_days: int = 20,
+    strategy_mode: bool = False,
 ) -> dict:
     """
     Run backtest simulation with capital allocation (paper trade).
@@ -81,6 +82,7 @@ def backtest(
         signal_confirmation: require BUY in consecutive scans to buy (default: True)
         emerging_only: only buy emerging setup stocks (Grade C/D trending toward B/A)
         max_hold_days: exit if trade held longer than N days without hitting TP (default: 20, 0=disabled)
+        strategy_mode: My Strategy — buy Grade A/B + C(emerging), exit only on STRONG SELL or stop-loss
 
     Returns:
         dict with trades, metrics, equity curve, and summary
@@ -251,13 +253,14 @@ def backtest(
                         symbols_to_close.append(symbol)
                     continue
 
-            # Normal SELL signal check
+            # SELL signal check — strategy_mode only exits on STRONG SELL
             ind = _compute_indicators_at(sdf, sym_idx)
             if ind is None:
                 continue
 
             analysis = analyze_stock(ind)
-            if analysis["signal"] in ("SELL", "STRONG SELL"):
+            sell_signals = ("STRONG SELL",) if strategy_mode else ("SELL", "STRONG SELL")
+            if analysis["signal"] in sell_signals:
                 # Sell at next day's open
                 sym_next_idx = sym_idx + 1
                 if sym_next_idx < len(sdf):
@@ -356,6 +359,55 @@ def backtest(
                         "buy_date": buy_date,
                         "net_score": analysis["net_score"] + emerging["points"],
                         "signal": f"EMERGING ({grade})",
+                        "entry_atr": entry_atr,
+                    })
+                continue
+
+            # Strategy mode: Grade A/B with BUY+, or Grade C emerging
+            if strategy_mode:
+                if analysis["signal"] not in ("STRONG BUY", "BUY"):
+                    continue
+
+                vol_ratio = 0
+                vol_sma_val = ind.get("volume_sma_20", 0)
+                if vol_sma_val and vol_sma_val > 0:
+                    vol_ratio = ind.get("volume", 0) / vol_sma_val
+
+                grade_info = compute_confidence_grade(
+                    net_score=analysis["net_score"],
+                    volume_ratio=vol_ratio,
+                    mtf_desc="",
+                    risk_level="Medium",
+                    confirmed=False,
+                )
+                grade = grade_info["grade"]
+
+                if grade in ("A", "B"):
+                    pass  # accept Grade A/B with BUY signal
+                elif grade == "C":
+                    # Grade C only if emerging setup detected
+                    sliced_df = sdf.iloc[:sym_idx + 1]
+                    emerging = detect_emerging_setup(sliced_df, ind, analysis["net_score"], grade)
+                    if not emerging:
+                        continue
+                else:
+                    continue  # reject Grade D/F
+
+                entry_atr = ind.get("atr", 0) or 0
+                sym_next_idx = sym_idx + 1
+                if sym_next_idx < len(sdf):
+                    buy_price = sdf.iloc[sym_next_idx]["Open"]
+                    if buy_price < min_price:
+                        continue
+                    if max_price > 0 and buy_price > max_price:
+                        continue
+                    buy_date = sdf.index[sym_next_idx]
+                    candidates.append({
+                        "symbol": symbol,
+                        "buy_price": buy_price,
+                        "buy_date": buy_date,
+                        "net_score": analysis["net_score"],
+                        "signal": f"{analysis['signal']} ({grade})",
                         "entry_atr": entry_atr,
                     })
                 continue

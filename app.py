@@ -305,6 +305,13 @@ def _run_scan(force=False):
                 except Exception:
                     pass
 
+        # Strategy match: Grade A/B with BUY+, or Grade C emerging with BUY+
+        is_buy = r["signal"] in ("STRONG BUY", "BUY")
+        r["strategy_match"] = is_buy and (
+            r["grade"] in ("A", "B") or
+            (r["grade"] == "C" and r["emerging"])
+        )
+
     # Save current signals for next scan's confirmation
     _save_prev_signals({r["symbol"]: r["signal"] for r in results})
 
@@ -660,6 +667,7 @@ def backtest_run():
     emerging_only = request.form.get("emerging_only") == "on"
     trailing_stop = request.form.get("trailing_stop") == "on"
     max_hold_days = int(request.form.get("max_hold_days", 20))
+    strategy_mode = request.form.get("strategy_mode") == "on"
 
     symbol_names = {s: get_symbol_name(s) for s in scan["stock_data"]}
 
@@ -682,6 +690,7 @@ def backtest_run():
         signal_confirmation=signal_confirmation,
         emerging_only=emerging_only,
         max_hold_days=max_hold_days,
+        strategy_mode=strategy_mode,
     )
 
     return _render("backtest.html", request, has_data=True, result=result)

@@ -70,6 +70,18 @@
                        title="Auto-exit trades held longer than N days. Frees capital for better opportunities.">
             </div>
         </div>
+        <!-- Strategy Mode -->
+        <div class="mt-4 p-3 border border-amber-500/30 rounded-lg bg-amber-950/20">
+            <label class="flex items-center gap-3 cursor-pointer">
+                <input type="checkbox" name="strategy_mode" id="strategy_mode_cb"
+                       class="w-5 h-5 rounded bg-surface-100 border-amber-500 text-amber-400 focus:ring-amber-400"
+                       onchange="toggleStrategyMode(this.checked)">
+                <div>
+                    <span class="text-amber-400 font-bold text-sm">🎯 My Strategy Mode</span>
+                    <p class="text-gray-400 text-xs mt-0.5">Buy Grade A/B + C (emerging) with BUY signal → Hold until STRONG SELL or stop-loss</p>
+                </div>
+            </label>
+        </div>
         <!-- Win Rate Boosters -->
         <h3 class="text-sm font-semibold text-gray-400 uppercase mt-4 mb-2">🎯 Win Rate Boosters</h3>
         <div class="flex flex-wrap gap-6 text-sm">
@@ -119,6 +131,18 @@
             {% endif %}
         </div>
     </form>
+    <script>
+    function toggleStrategyMode(on) {
+        const maxHold = document.querySelector('input[name="max_hold_days"]');
+        const emerging = document.querySelector('input[name="emerging_only"]');
+        if (on) {
+            maxHold.value = '0';  // hold until STRONG SELL, no time limit
+            emerging.checked = false;  // strategy_mode handles C emerging internally
+        } else {
+            maxHold.value = '20';
+        }
+    }
+    </script>
 
     {% if result %}
     {% set m = result.metrics %}
