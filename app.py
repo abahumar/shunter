@@ -34,6 +34,7 @@ from scanner.advanced import (
     compute_confidence_grade,
     detect_emerging_setup,
 )
+from scanner.vpa import analyze_vpa
 from scanner.backtest import backtest as run_backtest
 
 app = Flask(__name__)
@@ -255,6 +256,16 @@ def _run_scan(force=False):
             risk = compute_risk_score(ind)
             analysis["risk_level"] = risk["level"]
             analysis["risk_warnings"] = risk["warnings"]
+
+            # Volume Price Analysis
+            vpa = analyze_vpa(df)
+            analysis["vpa_score"] = vpa["vpa_score"]
+            analysis["vpa_bias"] = vpa["vpa_bias"]
+            analysis["vpa_pattern"] = vpa["latest_pattern"]
+            analysis["vpa_patterns"] = vpa["patterns"]
+            # VPA score contributes to net score (capped at ±15)
+            vpa_adj = max(-15, min(15, vpa["vpa_score"]))
+            analysis["net_score"] += vpa_adj
 
             results.append(analysis)
         except Exception:
@@ -668,6 +679,7 @@ def backtest_run():
     trailing_stop = request.form.get("trailing_stop") == "on"
     max_hold_days = int(request.form.get("max_hold_days", 20))
     strategy_mode = request.form.get("strategy_mode") == "on"
+    vpa_confirm = request.form.get("vpa_confirm") == "on"
 
     symbol_names = {s: get_symbol_name(s) for s in scan["stock_data"]}
 
@@ -691,6 +703,7 @@ def backtest_run():
         emerging_only=emerging_only,
         max_hold_days=max_hold_days,
         strategy_mode=strategy_mode,
+        vpa_confirm=vpa_confirm,
     )
 
     return _render("backtest.html", request, has_data=True, result=result)

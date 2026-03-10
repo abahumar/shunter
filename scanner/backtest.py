@@ -24,6 +24,7 @@ from scanner.signals import analyze_stock, classify_signal
 from scanner.market_sentiment import compute_sentiment_at, KLCI_SYMBOL
 from scanner.data_fetcher import fetch_stock_data
 from scanner.advanced import compute_confidence_grade, detect_emerging_setup
+from scanner.vpa import analyze_vpa_at
 
 console = Console()
 
@@ -60,6 +61,7 @@ def backtest(
     emerging_only: bool = False,
     max_hold_days: int = 20,
     strategy_mode: bool = False,
+    vpa_confirm: bool = False,
 ) -> dict:
     """
     Run backtest simulation with capital allocation (paper trade).
@@ -83,6 +85,7 @@ def backtest(
         emerging_only: only buy emerging setup stocks (Grade C/D trending toward B/A)
         max_hold_days: exit if trade held longer than N days without hitting TP (default: 20, 0=disabled)
         strategy_mode: My Strategy — buy Grade A/B + C(emerging), exit only on STRONG SELL or stop-loss
+        vpa_confirm: require bullish VPA pattern to buy (default: False)
 
     Returns:
         dict with trades, metrics, equity curve, and summary
@@ -427,6 +430,12 @@ def backtest(
                     di_plus = ind.get("di_plus", 0) or 0
                     di_minus = ind.get("di_minus", 0) or 0
                     if adx < 25 or di_plus <= di_minus:
+                        continue
+
+                # VPA confirmation: require bullish VPA pattern
+                if vpa_confirm:
+                    vpa = analyze_vpa_at(sdf, sym_idx)
+                    if vpa["vpa_bias"] != "bullish":
                         continue
 
                 # Store ATR for take-profit calculation

@@ -63,6 +63,9 @@
         <button onclick="filterSignals('strategy')" class="filter-btn px-3 py-1 rounded text-xs font-medium bg-surface-100 text-amber-400">
             🎯 My Strategy ({{ results|selectattr("strategy_match", "equalto", true)|list|length }})
         </button>
+        <button onclick="filterSignals('vpa_bull')" class="filter-btn px-3 py-1 rounded text-xs font-medium bg-surface-100 text-teal-400">
+            📊 VPA Bullish ({{ results|selectattr("vpa_bias", "equalto", "bullish")|list|length }})
+        </button>
     </div>
 
     <!-- Preset Filters -->
@@ -138,6 +141,7 @@
                     <th class="text-right p-3 cursor-pointer hover:text-accent select-none" onclick="sortTable('price')">Price (RM) <span class="sort-icon" data-col="price"></span></th>
                     <th class="text-center p-3 cursor-pointer hover:text-accent select-none" onclick="sortTable('signal')">Signal <span class="sort-icon" data-col="signal"></span></th>
                     <th class="text-center p-3 cursor-pointer hover:text-accent select-none" onclick="sortTable('grade')">Grade <span class="sort-icon" data-col="grade"></span></th>
+                    <th class="text-center p-3 cursor-pointer hover:text-accent select-none" onclick="sortTable('vpa')">VPA <span class="sort-icon" data-col="vpa"></span></th>
                     <th class="text-right p-3 cursor-pointer hover:text-accent select-none" onclick="sortTable('score')">Score <span class="sort-icon" data-col="score"></span></th>
                     <th class="text-right p-3 cursor-pointer hover:text-accent select-none" onclick="sortTable('rsi')">RSI <span class="sort-icon" data-col="rsi"></span></th>
                     <th class="text-right p-3 cursor-pointer hover:text-accent select-none" onclick="sortTable('adx')">ADX <span class="sort-icon" data-col="adx"></span></th>
@@ -155,6 +159,8 @@
                     data-confirmed="{{ 'true' if r.confirmed else 'false' }}"
                     data-emerging="{{ 'true' if r.emerging else 'false' }}"
                     data-strategy="{{ 'true' if r.strategy_match else 'false' }}"
+                    data-vpa="{{ r.vpa_bias|default('neutral') }}"
+                    data-vpascore="{{ r.vpa_score|default(0) }}"
                     data-price="{{ "%.2f"|format(r.close) }}"
                     data-sector="{{ r.sector }}"
                     data-divyield="{{ "%.1f"|format(r.div_yield|default(0)) }}"
@@ -206,6 +212,19 @@
                         {% if r.emerging %}
                         <span class="ml-1 px-1.5 py-0.5 rounded text-xs font-bold bg-purple-900/50 text-purple-400"
                               title="Emerging Setup: {{ r.emerging_reasons|default([])|join(', ') }}">🌱</span>
+                        {% endif %}
+                    </td>
+                    <td class="p-3 text-center">
+                        {% if r.vpa_pattern|default('') %}
+                        <span class="px-1.5 py-0.5 rounded text-xs font-bold
+                            {% if r.vpa_bias|default('neutral') == 'bullish' %}bg-green-900/50 text-green-400
+                            {% elif r.vpa_bias|default('neutral') == 'bearish' %}bg-red-900/50 text-red-400
+                            {% else %}bg-gray-800 text-gray-400{% endif %}"
+                            title="VPA Score: {{ r.vpa_score|default(0) }} | {{ r.vpa_patterns|default([])|map(attribute='pattern')|list|join(', ') }}">
+                            {{ r.vpa_pattern }}
+                        </span>
+                        {% else %}
+                        <span class="text-gray-600 text-xs">—</span>
                         {% endif %}
                     </td>
                     <td class="p-3 text-right font-mono">{{ r.net_score }}</td>
@@ -304,9 +323,10 @@
             if (col === 'name') { va = a.children[2].textContent.trim(); vb = b.children[2].textContent.trim(); return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va); }
             if (col === 'signal') { va = signalOrder[a.dataset.signal]||0; vb = signalOrder[b.dataset.signal]||0; }
             else if (col === 'grade') { va = gradeOrder[a.dataset.grade]||0; vb = gradeOrder[b.dataset.grade]||0; }
+            else if (col === 'vpa') { va = parseFloat(a.dataset.vpascore)||0; vb = parseFloat(b.dataset.vpascore)||0; }
             else if (col === 'risk') {
-                const ra = a.querySelector('td:nth-child(14) span');
-                const rb = b.querySelector('td:nth-child(14) span');
+                const ra = a.querySelector('td:nth-child(15) span');
+                const rb = b.querySelector('td:nth-child(15) span');
                 va = riskOrder[(ra?ra.textContent.trim():'')]||0;
                 vb = riskOrder[(rb?rb.textContent.trim():'')]||0;
             }
@@ -351,6 +371,7 @@
             else if (activeSignal === 'confirmed') show = row.dataset.confirmed === 'true';
             else if (activeSignal === 'emerging') show = row.dataset.emerging === 'true';
             else if (activeSignal === 'strategy') show = row.dataset.strategy === 'true';
+            else if (activeSignal === 'vpa_bull') show = row.dataset.vpa === 'bullish';
 
             if (show && activePreset === 'growth') show = score >= 30 && (signal === 'STRONG BUY' || signal === 'BUY');
             else if (show && activePreset === 'dividend') show = divYield >= 4;
