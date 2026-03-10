@@ -19,7 +19,7 @@ from scanner.signals import analyze_stock, classify_net_score
 from scanner.market_sentiment import fetch_market_sentiment
 from scanner.db import (
     add_stock, remove_stock, get_portfolio,
-    add_to_watchlist, remove_from_watchlist, get_watchlist, check_alerts,
+    add_to_watchlist, remove_from_watchlist, get_watchlist,
     get_tracker_stats, get_recent_signals, log_signals, update_outcomes,
     get_win_rate_by_score,
 )
@@ -711,7 +711,7 @@ def backtest_run():
 
 @app.route("/watchlist")
 def watchlist():
-    """Watchlist with price alerts."""
+    """Watchlist with added-price tracking and P&L."""
     stocks = get_watchlist()
 
     items = []
@@ -720,24 +720,23 @@ def watchlist():
         df = fetch_stock_data(symbol, period="5d")
         current = None
         change = None
-        alert = None
+        added_price = stock.get("added_price", 0) or 0
+        pnl = None
 
         if df is not None and len(df) >= 2:
             current = df["Close"].iloc[-1]
             prev = df["Close"].iloc[-2]
             change = ((current - prev) / prev) * 100
-
-            if stock["target_high"] > 0 and current >= stock["target_high"]:
-                alert = "above"
-            elif stock["target_low"] > 0 and current <= stock["target_low"]:
-                alert = "below"
+            if added_price > 0:
+                pnl = ((current - added_price) / added_price) * 100
 
         items.append({
             **stock,
             "name": get_symbol_name(symbol),
             "current": current,
             "change": change,
-            "alert": alert,
+            "added_price": added_price,
+            "pnl": pnl,
         })
 
     return _render("watchlist.html", request, items=items)
@@ -745,28 +744,34 @@ def watchlist():
 
 @app.route("/watchlist/quick-add", methods=["POST"])
 def watchlist_quick_add():
-    """Quick-add stock to watchlist from scanner (returns inline snippet)."""
+    """Quick-add stock to watchlist from scanner (captures current price)."""
     symbol = request.form.get("symbol", "").upper()
     if not symbol.endswith(".KL"):
         symbol += ".KL"
     if symbol in SYMBOLS:
-        add_to_watchlist(symbol)
+        price = 0
+        df = fetch_stock_data(symbol, period="5d")
+        if df is not None and len(df) >= 1:
+            price = float(df["Close"].iloc[-1])
+        add_to_watchlist(symbol, added_price=price)
         return '<span class="text-green-400" title="Added to watchlist">✅</span>'
     return '<span class="text-red-400" title="Invalid symbol">❌</span>'
 
 
 @app.route("/watchlist/add", methods=["POST"])
 def watchlist_add():
-    """Add stock to watchlist."""
+    """Add stock to watchlist with current price snapshot."""
     symbol = request.form.get("symbol", "").upper()
     if not symbol.endswith(".KL"):
         symbol += ".KL"
-    target_high = float(request.form.get("target_high", 0) or 0)
-    target_low = float(request.form.get("target_low", 0) or 0)
     notes = request.form.get("notes", "")
 
     if symbol in SYMBOLS:
-        add_to_watchlist(symbol, target_high, target_low, notes)
+        price = 0
+        df = fetch_stock_data(symbol, period="5d")
+        if df is not None and len(df) >= 1:
+            price = float(df["Close"].iloc[-1])
+        add_to_watchlist(symbol, added_price=price, notes=notes)
 
     return watchlist()
 

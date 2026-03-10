@@ -44,6 +44,7 @@ def init_db():
             symbol TEXT PRIMARY KEY,
             target_high REAL DEFAULT 0,
             target_low REAL DEFAULT 0,
+            added_price REAL DEFAULT 0,
             notes TEXT DEFAULT '',
             added_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
@@ -70,6 +71,12 @@ def init_db():
         );
     """)
     conn.commit()
+    # Migrate: add added_price column if missing (existing databases)
+    try:
+        conn.execute("ALTER TABLE watchlist ADD COLUMN added_price REAL DEFAULT 0")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists
     _migrate_json(conn)
     conn.close()
 
@@ -177,15 +184,15 @@ def clear_portfolio():
 
 # ── Watchlist ──
 
-def add_to_watchlist(symbol: str, target_high: float = 0, target_low: float = 0, notes: str = ""):
-    """Add or update a stock on the watchlist."""
+def add_to_watchlist(symbol: str, added_price: float = 0, notes: str = ""):
+    """Add a stock to the watchlist with the price at time of adding."""
     conn = _get_conn()
     now = datetime.now().isoformat()
     conn.execute(
-        """INSERT INTO watchlist (symbol, target_high, target_low, notes, added_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?)
-           ON CONFLICT(symbol) DO UPDATE SET target_high=?, target_low=?, notes=?, updated_at=?""",
-        (symbol, target_high, target_low, notes, now, now, target_high, target_low, notes, now)
+        """INSERT INTO watchlist (symbol, added_price, notes, added_at, updated_at)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(symbol) DO UPDATE SET notes=?, updated_at=?""",
+        (symbol, added_price, notes, now, now, notes, now)
     )
     conn.commit()
     conn.close()
@@ -209,17 +216,19 @@ def get_watchlist() -> List[dict]:
 
 
 def check_alerts(current_prices: dict) -> List[dict]:
-    """Check watchlist against current prices for triggered alerts."""
+    """Check watchlist against current prices for triggered alerts (legacy)."""
     alerts = []
     for stock in get_watchlist():
         symbol = stock["symbol"]
         price = current_prices.get(symbol)
         if price is None:
             continue
-        if stock["target_high"] > 0 and price >= stock["target_high"]:
-            alerts.append({"symbol": symbol, "type": "above", "target": stock["target_high"], "price": price})
-        if stock["target_low"] > 0 and price <= stock["target_low"]:
-            alerts.append({"symbol": symbol, "type": "below", "target": stock["target_low"], "price": price})
+        th = stock.get("target_high", 0) or 0
+        if th > 0 and price >= th:
+            alerts.append({"symbol": symbol, "type": "above", "target": th, "price": price})
+        tl = stock.get("target_low", 0) or 0
+        if tl > 0 and price <= tl:
+            alerts.append({"symbol": symbol, "type": "below", "target": tl, "price": price})
     return alerts
 
 
