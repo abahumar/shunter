@@ -23,6 +23,7 @@ from scanner.indicators import compute_indicators, get_latest_indicators
 from scanner.signals import analyze_stock, classify_signal
 from scanner.market_sentiment import compute_sentiment_at, KLCI_SYMBOL
 from scanner.data_fetcher import fetch_stock_data
+from scanner.advanced import compute_confidence_grade, detect_emerging_setup
 
 console = Console()
 
@@ -56,6 +57,7 @@ def backtest(
     take_profit_atr: float = 3.0,
     market_filter: bool = True,
     signal_confirmation: bool = True,
+    emerging_only: bool = False,
 ) -> dict:
     """
     Run backtest simulation with capital allocation (paper trade).
@@ -76,6 +78,7 @@ def backtest(
         take_profit_atr: sell when price reaches entry + N*ATR (0 = disabled)
         market_filter: apply KLCI sentiment score adjustment (default: True)
         signal_confirmation: require BUY in consecutive scans to buy (default: True)
+        emerging_only: only buy emerging setup stocks (Grade C/D trending toward B/A)
 
     Returns:
         dict with trades, metrics, equity curve, and summary
@@ -277,6 +280,51 @@ def backtest(
                 continue
 
             analysis = analyze_stock(ind)
+
+            # Emerging setup mode: look for Grade C/D stocks with emerging patterns
+            if emerging_only:
+                vol_ratio = 0
+                vol_sma_val = ind.get("volume_sma_20", 0)
+                if vol_sma_val and vol_sma_val > 0:
+                    vol_ratio = ind.get("volume", 0) / vol_sma_val
+
+                grade_info = compute_confidence_grade(
+                    net_score=analysis["net_score"],
+                    volume_ratio=vol_ratio,
+                    mtf_desc="",
+                    risk_level="Medium",
+                    confirmed=False,
+                )
+                grade = grade_info["grade"]
+                if grade in ("A", "B"):
+                    continue  # skip already-strong stocks
+
+                sliced_df = sdf.iloc[:sym_idx + 1]
+                emerging = detect_emerging_setup(sliced_df, ind, analysis["net_score"], grade)
+                if not emerging:
+                    continue
+
+                entry_atr = ind.get("atr", 0) or 0
+
+                sym_next_idx = sym_idx + 1
+                if sym_next_idx < len(sdf):
+                    buy_price = sdf.iloc[sym_next_idx]["Open"]
+                    if buy_price < min_price:
+                        continue
+                    if max_price > 0 and buy_price > max_price:
+                        continue
+                    buy_date = sdf.index[sym_next_idx]
+                    # Use emerging points as a sorting bonus
+                    candidates.append({
+                        "symbol": symbol,
+                        "buy_price": buy_price,
+                        "buy_date": buy_date,
+                        "net_score": analysis["net_score"] + emerging["points"],
+                        "signal": f"EMERGING ({grade})",
+                        "entry_atr": entry_atr,
+                    })
+                continue
+
             allowed = ("STRONG BUY",) if signal_filter == "STRONG_BUY" else ("STRONG BUY", "BUY")
             if analysis["signal"] in allowed:
                 # Volume confirmation: require volume > 1.5x average

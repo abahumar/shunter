@@ -87,6 +87,11 @@
                        class="w-4 h-4 rounded bg-surface-100 border-surface-200 text-accent focus:ring-accent">
                 <span>Signal Confirm <span class="text-gray-500 text-xs">(BUY in 2 consecutive scans)</span></span>
             </label>
+            <label class="flex items-center gap-2 text-gray-300 cursor-pointer">
+                <input type="checkbox" name="emerging_only"
+                       class="w-4 h-4 rounded bg-surface-100 border-surface-200 text-purple-400 focus:ring-purple-400">
+                <span>🌱 Emerging Only <span class="text-gray-500 text-xs">(Grade C/D trending → B/A)</span></span>
+            </label>
         </div>
         <div class="mt-4">
             {% if has_data %}

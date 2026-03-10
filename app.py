@@ -32,6 +32,7 @@ from scanner.advanced import (
     compute_risk_score,
     calculate_entry_plan,
     compute_confidence_grade,
+    detect_emerging_setup,
 )
 from scanner.backtest import backtest as run_backtest
 
@@ -286,6 +287,23 @@ def _run_scan(force=False):
         r["grade_label"] = grade_info["label"]
         r["grade_points"] = grade_info["points"]
         r["grade_factors"] = grade_info["factors"]
+
+        # Detect emerging setups (Grade C/D stocks trending toward B/A)
+        r["emerging"] = False
+        r["emerging_reasons"] = []
+        if r["grade"] in ("C", "D", "F"):
+            symbol = r["symbol"]
+            df = stock_data.get(symbol)
+            if df is not None and len(df) >= 50:
+                try:
+                    ind = get_latest_indicators(df)
+                    emerging = detect_emerging_setup(df, ind, r["net_score"], r["grade"])
+                    if emerging:
+                        r["emerging"] = True
+                        r["emerging_reasons"] = emerging["reasons"]
+                        r["emerging_points"] = emerging["points"]
+                except Exception:
+                    pass
 
     # Save current signals for next scan's confirmation
     _save_prev_signals({r["symbol"]: r["signal"] for r in results})
@@ -639,6 +657,7 @@ def backtest_run():
     take_profit_atr = float(request.form.get("take_profit_atr", 3.0))
     market_filter = request.form.get("market_filter") == "on"
     signal_confirmation = request.form.get("signal_confirmation") == "on"
+    emerging_only = request.form.get("emerging_only") == "on"
 
     symbol_names = {s: get_symbol_name(s) for s in scan["stock_data"]}
 
@@ -658,6 +677,7 @@ def backtest_run():
         take_profit_atr=take_profit_atr,
         market_filter=market_filter,
         signal_confirmation=signal_confirmation,
+        emerging_only=emerging_only,
     )
 
     return _render("backtest.html", request, has_data=True, result=result)

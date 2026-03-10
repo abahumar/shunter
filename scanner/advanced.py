@@ -5,6 +5,7 @@ Advanced signal features:
 - Volume spike detection
 - Dividend yield scoring
 - Risk sizing
+- Emerging setup detection
 """
 
 import pandas as pd
@@ -372,6 +373,113 @@ def compute_confidence_grade(
         "label": label,
         "points": points,
         "factors": factors,
+    }
+
+
+def detect_emerging_setup(
+    df: pd.DataFrame,
+    indicators: dict,
+    net_score: int,
+    grade: str = "C",
+) -> Optional[dict]:
+    """
+    Detect stocks in an emerging setup — Grade C/D trending toward B/A.
+    These are early-stage setups before the crowd piles in at Grade A.
+
+    Checks for:
+    1. Score improving (recent trend in MACD/RSI direction)
+    2. Weekly timeframe turning bullish
+    3. Volume building (above avg but not yet spiking)
+    4. RSI in early momentum zone (40-55)
+    5. Price near support or breaking out of consolidation
+
+    Returns dict with is_emerging, score, and reasons — or None.
+    """
+    if grade in ("A", "B"):
+        return None  # already strong, not "emerging"
+
+    if len(df) < 50:
+        return None
+
+    points = 0
+    reasons = []
+
+    close = indicators.get("close", 0)
+    rsi = indicators.get("rsi", 50)
+    adx = indicators.get("adx", 0)
+    macd_hist = indicators.get("macd_hist", 0)
+    macd_hist_prev = indicators.get("macd_hist_prev", 0)
+    ema_20 = indicators.get("ema_20", 0)
+    ema_50 = indicators.get("ema_50", 0)
+    ema_200 = indicators.get("ema_200", 0)
+    volume = indicators.get("volume", 0)
+    vol_sma = indicators.get("volume_sma_20", 1)
+    di_plus = indicators.get("di_plus", 0)
+    di_minus = indicators.get("di_minus", 0)
+    bb_lower = indicators.get("bb_lower", 0)
+    bb_mid = indicators.get("bb_mid", 0)
+
+    # 1. MACD turning positive (momentum building)
+    if macd_hist is not None and macd_hist_prev is not None:
+        if macd_hist > macd_hist_prev:
+            points += 2
+            reasons.append("MACD improving")
+            if macd_hist_prev < 0 and macd_hist > 0:
+                points += 3
+                reasons.append("MACD just crossed bullish")
+
+    # 2. RSI in early momentum zone (40-55) — building, not overbought
+    if rsi and 40 <= rsi <= 55:
+        points += 2
+        reasons.append(f"RSI {rsi:.0f} (early momentum)")
+    elif rsi and 30 <= rsi < 40:
+        points += 1
+        reasons.append(f"RSI {rsi:.0f} (oversold, potential bounce)")
+
+    # 3. Volume building (1.0-1.8x avg — interested but not crowded yet)
+    if vol_sma and vol_sma > 0:
+        vol_ratio = volume / vol_sma
+        if 1.0 < vol_ratio < 1.8:
+            points += 2
+            reasons.append(f"Volume building ({vol_ratio:.1f}x avg)")
+        elif vol_ratio >= 1.8:
+            points += 1  # already spiking = might be late
+
+    # 4. Weekly trend turning (EMA alignment improving)
+    if ema_20 and ema_50 and ema_200:
+        if ema_20 > ema_50 and close > ema_20:
+            points += 2
+            reasons.append("Short-term trend turning up")
+        if close > ema_200 and close < ema_50:
+            points += 1
+            reasons.append("Above EMA200, approaching EMA50")
+
+    # 5. ADX starting to strengthen (15-25 = trend forming)
+    if adx and 15 <= adx <= 25 and di_plus and di_minus and di_plus > di_minus:
+        points += 2
+        reasons.append(f"Trend forming (ADX {adx:.0f}, DI+ leading)")
+
+    # 6. Price near Bollinger lower band or midline (not extended)
+    if bb_lower and bb_mid and close:
+        if close <= bb_mid * 1.01:
+            points += 1
+            reasons.append("Price near BB midline (room to run)")
+
+    # 7. Net score in the "almost there" zone
+    if 20 <= net_score <= 45:
+        points += 1
+        reasons.append(f"Score {net_score} (approaching BUY zone)")
+
+    # Classify as emerging if enough factors align
+    is_emerging = points >= 5
+
+    if not is_emerging:
+        return None
+
+    return {
+        "is_emerging": True,
+        "points": points,
+        "reasons": reasons,
     }
 
 
