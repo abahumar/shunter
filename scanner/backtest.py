@@ -49,7 +49,7 @@ def backtest(
     stop_loss_pct: float = -7.0,
     min_price: float = 0.10,
     max_price: float = 0.0,
-    trailing_stop: bool = False,
+    trailing_stop: bool = True,
     signal_filter: str = "BUY",
     capital: float = 10000.0,
     volume_confirm: bool = True,
@@ -58,6 +58,7 @@ def backtest(
     market_filter: bool = True,
     signal_confirmation: bool = True,
     emerging_only: bool = False,
+    max_hold_days: int = 20,
 ) -> dict:
     """
     Run backtest simulation with capital allocation (paper trade).
@@ -79,6 +80,7 @@ def backtest(
         market_filter: apply KLCI sentiment score adjustment (default: True)
         signal_confirmation: require BUY in consecutive scans to buy (default: True)
         emerging_only: only buy emerging setup stocks (Grade C/D trending toward B/A)
+        max_hold_days: exit if trade held longer than N days without hitting TP (default: 20, 0=disabled)
 
     Returns:
         dict with trades, metrics, equity curve, and summary
@@ -127,7 +129,7 @@ def backtest(
 
         next_date = ref_df.index[next_idx]
 
-        # ── Check STOP-LOSS and SELL signals on open positions ──
+        # ── Check STOP-LOSS, TAKE-PROFIT, TIME-EXIT, and SELL signals ──
         symbols_to_close = []
         for symbol, pos in open_positions.items():
             if symbol not in stock_data:
@@ -138,24 +140,57 @@ def backtest(
                 continue
 
             current_close = sdf.iloc[sym_idx]["Close"]
+            current_low = sdf.iloc[sym_idx]["Low"]
+            current_high = sdf.iloc[sym_idx]["High"]
 
-            # Trailing stop: update highest price seen
+            # Trailing stop: track highest price seen since entry
             if trailing_stop:
                 if "highest" not in pos:
                     pos["highest"] = pos["buy_price"]
-                pos["highest"] = max(pos["highest"], current_close)
+                pos["highest"] = max(pos["highest"], current_high)
                 stop_ref = pos["highest"]
             else:
                 stop_ref = pos["buy_price"]
 
-            current_pnl_from_stop = ((current_close - stop_ref) / stop_ref) * 100
+            # Compute the stop-loss trigger price
+            stop_trigger = stop_ref * (1 + stop_loss_pct / 100)
 
-            # Stop-loss: sell if price drops below threshold from reference
-            if stop_loss_pct is not None and current_pnl_from_stop <= stop_loss_pct:
-                sym_next_idx = sym_idx + 1
-                if sym_next_idx < len(sdf):
-                    sell_price = sdf.iloc[sym_next_idx]["Open"]
-                    sell_date = sdf.index[sym_next_idx]
+            # Stop-loss: use intraday Low to detect breach, sell at stop price
+            if stop_loss_pct is not None and current_low <= stop_trigger:
+                sell_price = stop_trigger  # realistic: fill at stop level
+                sell_date = sdf.index[sym_idx]  # same day (intraday stop)
+                pnl_pct = ((sell_price - pos["buy_price"]) / pos["buy_price"]) * 100
+                hold_days = (sell_date - pos["buy_date"]).days
+                qty = pos.get("quantity", 0)
+                cost = pos["buy_price"] * qty
+                proceeds = sell_price * qty
+                pnl_rm = proceeds - cost
+                cash += proceeds
+
+                trades.append({
+                    "symbol": symbol,
+                    "name": symbol_names.get(symbol, symbol),
+                    "buy_date": pos["buy_date"],
+                    "buy_price": pos["buy_price"],
+                    "buy_score": pos["buy_score"],
+                    "sell_date": sell_date,
+                    "sell_price": sell_price,
+                    "sell_signal": "TRAILING-STOP" if trailing_stop else "STOP-LOSS",
+                    "pnl_pct": pnl_pct,
+                    "pnl_rm": round(pnl_rm, 2),
+                    "quantity": qty,
+                    "cost": round(cost, 2),
+                    "hold_days": hold_days,
+                })
+                symbols_to_close.append(symbol)
+                continue
+
+            # Take-profit: sell when price reaches entry + N*ATR
+            if take_profit_atr > 0 and "entry_atr" in pos:
+                tp_target = pos["buy_price"] + (take_profit_atr * pos["entry_atr"])
+                if current_high >= tp_target:
+                    sell_price = tp_target  # fill at target level
+                    sell_date = sdf.index[sym_idx]
                     pnl_pct = ((sell_price - pos["buy_price"]) / pos["buy_price"]) * 100
                     hold_days = (sell_date - pos["buy_date"]).days
                     qty = pos.get("quantity", 0)
@@ -172,7 +207,7 @@ def backtest(
                         "buy_score": pos["buy_score"],
                         "sell_date": sell_date,
                         "sell_price": sell_price,
-                        "sell_signal": "TRAILING-STOP" if trailing_stop else "STOP-LOSS",
+                        "sell_signal": "TAKE-PROFIT",
                         "pnl_pct": pnl_pct,
                         "pnl_rm": round(pnl_rm, 2),
                         "quantity": qty,
@@ -180,18 +215,18 @@ def backtest(
                         "hold_days": hold_days,
                     })
                     symbols_to_close.append(symbol)
-                continue
+                    continue
 
-            # Take-profit: sell when price reaches entry + N*ATR
-            if take_profit_atr > 0 and "entry_atr" in pos:
-                tp_target = pos["buy_price"] + (take_profit_atr * pos["entry_atr"])
-                if current_close >= tp_target:
+            # Time-based exit: close stale trades to free capital
+            if max_hold_days > 0:
+                hold_days = (current_date - pos["buy_date"]).days
+                if hold_days >= max_hold_days:
                     sym_next_idx = sym_idx + 1
                     if sym_next_idx < len(sdf):
                         sell_price = sdf.iloc[sym_next_idx]["Open"]
                         sell_date = sdf.index[sym_next_idx]
                         pnl_pct = ((sell_price - pos["buy_price"]) / pos["buy_price"]) * 100
-                        hold_days = (sell_date - pos["buy_date"]).days
+                        final_hold = (sell_date - pos["buy_date"]).days
                         qty = pos.get("quantity", 0)
                         cost = pos["buy_price"] * qty
                         proceeds = sell_price * qty
@@ -206,12 +241,12 @@ def backtest(
                             "buy_score": pos["buy_score"],
                             "sell_date": sell_date,
                             "sell_price": sell_price,
-                            "sell_signal": "TAKE-PROFIT",
+                            "sell_signal": "TIME-EXIT",
                             "pnl_pct": pnl_pct,
                             "pnl_rm": round(pnl_rm, 2),
                             "quantity": qty,
                             "cost": round(cost, 2),
-                            "hold_days": hold_days,
+                            "hold_days": final_hold,
                         })
                         symbols_to_close.append(symbol)
                     continue
@@ -489,8 +524,10 @@ def _compute_metrics(trades: List[dict]) -> dict:
     gross_profit = sum(winners) if winners else 0
     gross_loss = abs(sum(losers)) if losers else 0
 
-    stop_losses = [t for t in trades if t.get("sell_signal") == "STOP-LOSS"]
+    stop_losses = [t for t in trades if t.get("sell_signal") in ("STOP-LOSS", "TRAILING-STOP")]
+    trailing_stops = [t for t in trades if t.get("sell_signal") == "TRAILING-STOP"]
     take_profits = [t for t in trades if t.get("sell_signal") == "TAKE-PROFIT"]
+    time_exits = [t for t in trades if t.get("sell_signal") == "TIME-EXIT"]
 
     return {
         "total_trades": len(trades),
@@ -506,7 +543,9 @@ def _compute_metrics(trades: List[dict]) -> dict:
         "avg_hold_days": np.mean(hold_days),
         "profit_factor": gross_profit / gross_loss if gross_loss > 0 else float("inf"),
         "stop_loss_exits": len(stop_losses),
+        "trailing_stop_exits": len(trailing_stops),
         "take_profit_exits": len(take_profits),
+        "time_exits": len(time_exits),
     }
 
 

@@ -658,6 +658,8 @@ def backtest_run():
     market_filter = request.form.get("market_filter") == "on"
     signal_confirmation = request.form.get("signal_confirmation") == "on"
     emerging_only = request.form.get("emerging_only") == "on"
+    trailing_stop = request.form.get("trailing_stop") == "on"
+    max_hold_days = int(request.form.get("max_hold_days", 20))
 
     symbol_names = {s: get_symbol_name(s) for s in scan["stock_data"]}
 
@@ -670,6 +672,7 @@ def backtest_run():
         stop_loss_pct=stop_loss,
         min_price=min_price,
         max_price=max_price,
+        trailing_stop=trailing_stop,
         signal_filter=signal_filter,
         capital=capital,
         volume_confirm=volume_confirm,
@@ -678,6 +681,7 @@ def backtest_run():
         market_filter=market_filter,
         signal_confirmation=signal_confirmation,
         emerging_only=emerging_only,
+        max_hold_days=max_hold_days,
     )
 
     return _render("backtest.html", request, has_data=True, result=result)
