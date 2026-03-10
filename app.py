@@ -11,6 +11,7 @@ import pickle
 import os
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify
+import yfinance as yf
 
 from scanner.symbols import get_all_symbols, get_symbol_name, search_symbol, SYMBOLS
 from scanner.data_fetcher import fetch_stock_data, fetch_bulk_data, fetch_batch_download
@@ -717,18 +718,21 @@ def watchlist():
     items = []
     for stock in stocks:
         symbol = stock["symbol"]
-        df = fetch_stock_data(symbol, period="5d")
         current = None
         change = None
         added_price = stock.get("added_price", 0) or 0
         pnl = None
 
-        if df is not None and len(df) >= 2:
-            current = df["Close"].iloc[-1]
-            prev = df["Close"].iloc[-2]
-            change = ((current - prev) / prev) * 100
-            if added_price > 0:
-                pnl = ((current - added_price) / added_price) * 100
+        try:
+            df = yf.Ticker(symbol).history(period="5d", auto_adjust=True)
+            if df is not None and len(df) >= 2:
+                current = float(df["Close"].iloc[-1])
+                prev = float(df["Close"].iloc[-2])
+                change = ((current - prev) / prev) * 100
+                if added_price > 0:
+                    pnl = ((current - added_price) / added_price) * 100
+        except Exception:
+            pass
 
         items.append({
             **stock,
@@ -742,6 +746,17 @@ def watchlist():
     return _render("watchlist.html", request, items=items)
 
 
+def _fetch_current_price(symbol: str) -> float:
+    """Fetch latest closing price for watchlist snapshot."""
+    try:
+        df = yf.Ticker(symbol).history(period="5d", auto_adjust=True)
+        if not df.empty:
+            return float(df["Close"].iloc[-1])
+    except Exception:
+        pass
+    return 0
+
+
 @app.route("/watchlist/quick-add", methods=["POST"])
 def watchlist_quick_add():
     """Quick-add stock to watchlist from scanner (captures current price)."""
@@ -749,10 +764,7 @@ def watchlist_quick_add():
     if not symbol.endswith(".KL"):
         symbol += ".KL"
     if symbol in SYMBOLS:
-        price = 0
-        df = fetch_stock_data(symbol, period="5d")
-        if df is not None and len(df) >= 1:
-            price = float(df["Close"].iloc[-1])
+        price = _fetch_current_price(symbol)
         add_to_watchlist(symbol, added_price=price)
         return '<span class="text-green-400" title="Added to watchlist">✅</span>'
     return '<span class="text-red-400" title="Invalid symbol">❌</span>'
@@ -767,10 +779,7 @@ def watchlist_add():
     notes = request.form.get("notes", "")
 
     if symbol in SYMBOLS:
-        price = 0
-        df = fetch_stock_data(symbol, period="5d")
-        if df is not None and len(df) >= 1:
-            price = float(df["Close"].iloc[-1])
+        price = _fetch_current_price(symbol)
         add_to_watchlist(symbol, added_price=price, notes=notes)
 
     return watchlist()
