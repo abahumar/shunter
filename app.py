@@ -39,6 +39,7 @@ from scanner.advanced import (
 from scanner.vpa import analyze_vpa
 from scanner.backtest import backtest as run_backtest
 from scanner.summary import format_trade_summary
+from scanner.swing import detect_swing_setups
 
 app = Flask(__name__)
 
@@ -242,6 +243,7 @@ def _run_scan(force=False):
     for symbol, df in stock_data.items():
         try:
             df = compute_indicators(df)
+            stock_data[symbol] = df
             ind = get_latest_indicators(df)
             analysis = analyze_stock(ind)
 
@@ -407,7 +409,8 @@ def dashboard():
     """Dashboard with summary cards."""
     scan = _cache_get("scan_all")
     klci = _get_klci_sentiment()
-    return _render("dashboard.html", request, scan=scan, klci=klci)
+    sector_data = _build_sector_data(scan) if scan else []
+    return _render("dashboard.html", request, scan=scan, klci=klci, sectors=sector_data)
 
 
 @app.route("/scan")
@@ -438,6 +441,52 @@ def scan_status():
     # Otherwise return progress partial
     return render_template("scan_progress_partial.html",
                            progress=_scan_progress, now=datetime.now())
+
+
+@app.route("/swing")
+def swing_scanner():
+    """Swing trade setup scanner — identifies actionable swing setups."""
+    cached = _cache_get("swing_results")
+    if cached:
+        return _render("swing.html", request, results=cached, total=len(cached))
+
+    scan = _run_scan()
+    if not scan:
+        return _render("swing.html", request, results=[], total=0)
+
+    stock_data = scan.get("stock_data", {})
+    results = []
+
+    for r in scan["results"]:
+        symbol = r["symbol"]
+        df = stock_data.get(symbol)
+        if df is None or len(df) < 50:
+            continue
+
+        try:
+            ind = get_latest_indicators(df)
+            sr = find_support_resistance(df)
+            setups = detect_swing_setups(df, ind, sr)
+            if not setups:
+                continue
+
+            for setup in setups:
+                results.append({
+                    "symbol": symbol,
+                    "name": r.get("name", ""),
+                    "close": r.get("close", 0),
+                    "sector": r.get("sector", ""),
+                    "signal": r.get("signal", "HOLD"),
+                    "grade": r.get("grade", "C"),
+                    **setup,
+                })
+        except Exception:
+            continue
+
+    results.sort(key=lambda x: x["strength"], reverse=True)
+    _cache_set("swing_results", results, SCAN_TTL)
+
+    return _render("swing.html", request, results=results, total=len(results))
 
 
 @app.route("/stock/<symbol>")
@@ -518,7 +567,12 @@ def sectors():
         _start_background_scan()
         return _render("scan_progress.html", request)
 
-    # Build sector data from pre-computed scan results instead of re-analyzing
+    sector_data = _build_sector_data(scan)
+    return _render("sectors.html", request, sectors=sector_data, scan=scan)
+
+
+def _build_sector_data(scan):
+    """Build sector rotation data from scan results."""
     sector_stocks = {}
     for r in scan.get("results", []):
         sector = r.get("sector", "Unknown")
@@ -573,7 +627,7 @@ def sectors():
         })
 
     sector_data.sort(key=lambda x: x["avg_score"], reverse=True)
-    return _render("sectors.html", request, sectors=sector_data, scan=scan)
+    return sector_data
 
 
 @app.route("/spikes")
@@ -802,6 +856,18 @@ def _fetch_current_price(symbol: str) -> float:
     return 0
 
 
+def _resample_weekly(df):
+    """Resample daily OHLCV data to weekly candles."""
+    weekly = df.resample("W").agg({
+        "Open": "first",
+        "High": "max",
+        "Low": "min",
+        "Close": "last",
+        "Volume": "sum",
+    }).dropna()
+    return weekly
+
+
 @app.route("/watchlist/quick-add", methods=["POST"])
 def watchlist_quick_add():
     """Quick-add stock to watchlist from scanner (captures current price in background)."""
@@ -902,9 +968,15 @@ def api_chart(symbol):
     if not symbol.endswith(".KL"):
         symbol += ".KL"
 
-    df = fetch_stock_data(symbol, period="1y")
+    tf = request.args.get("tf", "daily")
+    period = "3y" if tf == "weekly" else "1y"
+
+    df = fetch_stock_data(symbol, period=period)
     if df is None:
         return jsonify({"error": "No data"}), 404
+
+    if tf == "weekly":
+        df = _resample_weekly(df)
 
     df = compute_indicators(df)
 

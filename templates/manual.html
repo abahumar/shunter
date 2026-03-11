@@ -14,7 +14,7 @@
             <a href="#sec-dashboard" class="text-accent hover:underline">2. Dashboard</a>
             <a href="#sec-scanner" class="text-accent hover:underline">3. Scanner</a>
             <a href="#sec-stock" class="text-accent hover:underline">4. Stock Detail</a>
-            <a href="#sec-sectors" class="text-accent hover:underline">5. Sectors</a>
+            <a href="#sec-swing" class="text-accent hover:underline">5. Swing Scanner 🔄</a>
             <a href="#sec-spikes" class="text-accent hover:underline">6. Volume Spikes</a>
             <a href="#sec-portfolio" class="text-accent hover:underline">7. Portfolio</a>
             <a href="#sec-watchlist" class="text-accent hover:underline">8. Watchlist</a>
@@ -289,14 +289,78 @@
         </ul>
     </div>
 
-    <!-- 5. Sectors -->
-    <div class="card p-5" id="sec-sectors">
-        <h3 class="text-lg font-bold text-white mb-3">5. Sectors</h3>
-        <p class="text-gray-300 text-sm leading-relaxed">
-            Shows sector rotation analysis across 11 Bursa Malaysia sectors (Technology, Consumer, Industrial, Property, Finance, etc.).
-            Each sector displays average performance, number of BUY signals, and trending direction.
-            Use this to identify which sectors are leading/lagging the market.
+    <!-- 5. Swing Scanner -->
+    <div class="card p-5" id="sec-swing">
+        <h3 class="text-lg font-bold text-white mb-3">5. Swing Scanner 🔄</h3>
+        <p class="text-gray-300 text-sm leading-relaxed mb-3">
+            A dedicated page for swing traders. Automatically detects actionable swing trade setups across all scanned stocks,
+            with entry/exit levels and estimated holding periods. Access it from the <strong class="text-white">🔄 Swing Scanner</strong> link in the sidebar.
         </p>
+
+        <h4 class="text-sm font-semibold text-accent mt-4 mb-2">Setup Types</h4>
+        <div class="overflow-x-auto">
+            <table class="w-full text-xs">
+                <thead>
+                    <tr class="text-gray-500 uppercase">
+                        <th class="text-left pb-2">Setup</th>
+                        <th class="text-left pb-2">Holding</th>
+                        <th class="text-left pb-2">Description</th>
+                    </tr>
+                </thead>
+                <tbody class="text-gray-300">
+                    <tr class="border-t border-surface-100">
+                        <td class="py-2"><span class="px-1.5 py-0.5 rounded bg-blue-900/50 text-blue-400 font-bold">EMA Pullback</span></td>
+                        <td class="py-2">3–5 days</td>
+                        <td class="py-2">Price in uptrend (EMA20 > EMA50 > EMA200) pulls back to EMA20 or EMA50 and bounces. Classic "buy the dip" in a trend.</td>
+                    </tr>
+                    <tr class="border-t border-surface-100">
+                        <td class="py-2"><span class="px-1.5 py-0.5 rounded bg-green-900/50 text-green-400 font-bold">Oversold Bounce</span></td>
+                        <td class="py-2">3–10 days</td>
+                        <td class="py-2">RSI recently dropped below 35 and is now recovering. Mean-reversion trade — price snaps back to the average.</td>
+                    </tr>
+                    <tr class="border-t border-surface-100">
+                        <td class="py-2"><span class="px-1.5 py-0.5 rounded bg-amber-900/50 text-amber-400 font-bold">Breakout</span></td>
+                        <td class="py-2">1–2 weeks</td>
+                        <td class="py-2">Price breaks above 20-day high or key resistance with above-average volume. Momentum continuation trade.</td>
+                    </tr>
+                    <tr class="border-t border-surface-100">
+                        <td class="py-2"><span class="px-1.5 py-0.5 rounded bg-purple-900/50 text-purple-400 font-bold">MACD Crossover</span></td>
+                        <td class="py-2">1–2 weeks</td>
+                        <td class="py-2">MACD histogram flips from negative to positive (bullish crossover). Stronger when it happens below zero line.</td>
+                    </tr>
+                    <tr class="border-t border-surface-100">
+                        <td class="py-2"><span class="px-1.5 py-0.5 rounded bg-teal-900/50 text-teal-400 font-bold">BB Squeeze</span></td>
+                        <td class="py-2">1–4 weeks</td>
+                        <td class="py-2">Bollinger Bands contracted tightly (low volatility), then price breaks above upper band. Volatility expansion trade.</td>
+                    </tr>
+                    <tr class="border-t border-surface-100">
+                        <td class="py-2"><span class="px-1.5 py-0.5 rounded bg-orange-900/50 text-orange-400 font-bold">Support Bounce</span></td>
+                        <td class="py-2">1–2 weeks</td>
+                        <td class="py-2">Price tests key support (S/R level, EMA200, or lower Bollinger Band) and bounces with volume confirmation.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <h4 class="text-sm font-semibold text-accent mt-4 mb-2">Reading the Table</h4>
+        <ul class="text-sm text-gray-300 space-y-1 ml-4 list-disc">
+            <li><strong class="text-white">Entry</strong> — Suggested entry price (current close)</li>
+            <li><strong class="text-white">Stop Loss</strong> — ATR-based stop loss (red = your max downside)</li>
+            <li><strong class="text-white">Target</strong> — ATR-based take profit (green = your upside goal)</li>
+            <li><strong class="text-white">R:R</strong> — Reward-to-Risk ratio. Green ≥ 2.0 is ideal, ≥ 1.5 is acceptable</li>
+            <li><strong class="text-white">Strength</strong> — Setup quality (●●●●● = strongest). Based on how many confirming factors align</li>
+        </ul>
+
+        <h4 class="text-sm font-semibold text-accent mt-4 mb-2">Filter Pills</h4>
+        <p class="text-sm text-gray-300">
+            Use the filter buttons at the top to focus on a specific setup type. The count beside each filter shows how many setups were found.
+        </p>
+
+        <div class="mt-3 p-3 bg-surface rounded text-xs text-gray-400">
+            💡 <strong>Tip:</strong> For best results, combine setups with the main scanner's Signal and Grade.
+            A <span class="text-green-400 font-bold">BUY</span> signal + Grade <span class="text-green-400 font-bold">A/B</span> + a swing setup is a high-conviction trade.
+            Click any row to see the full stock detail with chart and indicators.
+        </div>
     </div>
 
     <!-- 6. Volume Spikes -->

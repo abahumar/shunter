@@ -90,9 +90,16 @@
     </div>
     {% endif %}
 
-    <!-- Chart -->
-    <div class="card p-4">
-        <div id="stock-chart" style="height: 400px;"></div>
+    <!-- Charts: Daily & Weekly side by side -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="card p-4">
+            <h3 class="text-sm font-bold text-gray-400 mb-2">📊 Daily</h3>
+            <div id="chart-daily" style="height: 400px;"></div>
+        </div>
+        <div class="card p-4">
+            <h3 class="text-sm font-bold text-gray-400 mb-2">📊 Weekly</h3>
+            <div id="chart-weekly" style="height: 400px;"></div>
+        </div>
     </div>
 
     <!-- Info Grid -->
@@ -275,64 +282,73 @@
 <!-- Chart initialization -->
 <script>
 (function() {
-    const container = document.getElementById('stock-chart');
-    if (!container) return;
+    const charts = [];
+    const observers = [];
 
-    const chart = LightweightCharts.createChart(container, {
-        layout: { background: { color: '#1e293b' }, textColor: '#94a3b8' },
-        grid: { vertLines: { color: '#334155' }, horzLines: { color: '#334155' } },
-        crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-        rightPriceScale: { borderColor: '#334155' },
-        timeScale: { borderColor: '#334155', timeVisible: false },
-    });
+    function createStockChart(containerId, apiUrl) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
 
-    const candleSeries = chart.addCandlestickSeries({
-        upColor: '#22c55e', downColor: '#ef4444',
-        borderUpColor: '#22c55e', borderDownColor: '#ef4444',
-        wickUpColor: '#22c55e', wickDownColor: '#ef4444',
-    });
-
-    const volumeSeries = chart.addHistogramSeries({
-        priceFormat: { type: 'volume' },
-        priceScaleId: 'volume',
-    });
-    chart.priceScale('volume').applyOptions({
-        scaleMargins: { top: 0.8, bottom: 0 },
-    });
-
-    fetch('/api/chart/{{ d.symbol }}')
-        .then(r => r.json())
-        .then(data => {
-            candleSeries.setData(data.candles);
-            volumeSeries.setData(data.volume);
-
-            if (data.ema20.length) {
-                chart.addLineSeries({ color: '#f59e0b', lineWidth: 1, title: 'EMA20' }).setData(data.ema20);
-            }
-            if (data.ema50.length) {
-                chart.addLineSeries({ color: '#3b82f6', lineWidth: 1, title: 'EMA50' }).setData(data.ema50);
-            }
-            if (data.ema200.length) {
-                chart.addLineSeries({ color: '#a855f7', lineWidth: 1, title: 'EMA200' }).setData(data.ema200);
-            }
-            if (data.bb_upper.length) {
-                chart.addLineSeries({ color: 'rgba(156,163,175,0.3)', lineWidth: 1, lineStyle: 2 }).setData(data.bb_upper);
-                chart.addLineSeries({ color: 'rgba(156,163,175,0.3)', lineWidth: 1, lineStyle: 2 }).setData(data.bb_lower);
-            }
-
-            chart.timeScale().fitContent();
+        const chart = LightweightCharts.createChart(container, {
+            layout: { background: { color: '#1e293b' }, textColor: '#94a3b8' },
+            grid: { vertLines: { color: '#334155' }, horzLines: { color: '#334155' } },
+            crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+            rightPriceScale: { borderColor: '#334155' },
+            timeScale: { borderColor: '#334155', timeVisible: false },
         });
 
-    // Resize handler
-    const ro = new ResizeObserver(() => {
-        chart.applyOptions({ width: container.clientWidth });
-    });
-    ro.observe(container);
+        const candleSeries = chart.addCandlestickSeries({
+            upColor: '#22c55e', downColor: '#ef4444',
+            borderUpColor: '#22c55e', borderDownColor: '#ef4444',
+            wickUpColor: '#22c55e', wickDownColor: '#ef4444',
+        });
 
-    // Cleanup on HTMX navigation
+        const volumeSeries = chart.addHistogramSeries({
+            priceFormat: { type: 'volume' },
+            priceScaleId: 'volume',
+        });
+        chart.priceScale('volume').applyOptions({
+            scaleMargins: { top: 0.8, bottom: 0 },
+        });
+
+        fetch(apiUrl)
+            .then(r => r.json())
+            .then(data => {
+                candleSeries.setData(data.candles);
+                volumeSeries.setData(data.volume);
+
+                if (data.ema20.length) {
+                    chart.addLineSeries({ color: '#f59e0b', lineWidth: 1, title: 'EMA20' }).setData(data.ema20);
+                }
+                if (data.ema50.length) {
+                    chart.addLineSeries({ color: '#3b82f6', lineWidth: 1, title: 'EMA50' }).setData(data.ema50);
+                }
+                if (data.ema200.length) {
+                    chart.addLineSeries({ color: '#a855f7', lineWidth: 1, title: 'EMA200' }).setData(data.ema200);
+                }
+                if (data.bb_upper.length) {
+                    chart.addLineSeries({ color: 'rgba(156,163,175,0.3)', lineWidth: 1, lineStyle: 2 }).setData(data.bb_upper);
+                    chart.addLineSeries({ color: 'rgba(156,163,175,0.3)', lineWidth: 1, lineStyle: 2 }).setData(data.bb_lower);
+                }
+
+                chart.timeScale().fitContent();
+            });
+
+        const ro = new ResizeObserver(() => {
+            chart.applyOptions({ width: container.clientWidth });
+        });
+        ro.observe(container);
+
+        charts.push(chart);
+        observers.push(ro);
+    }
+
+    createStockChart('chart-daily', '/api/chart/{{ d.symbol }}');
+    createStockChart('chart-weekly', '/api/chart/{{ d.symbol }}?tf=weekly');
+
     document.body.addEventListener('htmx:beforeSwap', function cleanup() {
-        ro.disconnect();
-        chart.remove();
+        observers.forEach(ro => ro.disconnect());
+        charts.forEach(c => c.remove());
         document.body.removeEventListener('htmx:beforeSwap', cleanup);
     });
 })();
