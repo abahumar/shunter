@@ -21,6 +21,7 @@ from scanner.market_sentiment import fetch_market_sentiment
 from scanner.db import (
     add_stock, remove_stock, get_portfolio,
     add_to_watchlist, remove_from_watchlist, get_watchlist,
+    update_watchlist_price, is_in_watchlist,
     get_tracker_stats, get_recent_signals, log_signals, update_outcomes,
     get_win_rate_by_score,
 )
@@ -505,7 +506,8 @@ def stock_detail(symbol):
         detail["summary"] = format_trade_summary(detail)
         _cache_set(cache_key, detail, STOCK_TTL)
 
-    return _render("stock_detail.html", request, detail=detail, symbol=symbol)
+    return _render("stock_detail.html", request, detail=detail, symbol=symbol,
+                   in_watchlist=is_in_watchlist(symbol))
 
 
 @app.route("/sectors")
@@ -802,15 +804,71 @@ def _fetch_current_price(symbol: str) -> float:
 
 @app.route("/watchlist/quick-add", methods=["POST"])
 def watchlist_quick_add():
-    """Quick-add stock to watchlist from scanner (captures current price)."""
+    """Quick-add stock to watchlist from scanner (captures current price in background)."""
     symbol = request.form.get("symbol", "").upper()
     if not symbol.endswith(".KL"):
         symbol += ".KL"
     if symbol in SYMBOLS:
-        price = _fetch_current_price(symbol)
-        add_to_watchlist(symbol, added_price=price)
+        add_to_watchlist(symbol, added_price=0)
+
+        def _bg_fetch_price(sym):
+            try:
+                price = _fetch_current_price(sym)
+                if price:
+                    update_watchlist_price(sym, price)
+            except Exception:
+                pass
+
+        threading.Thread(target=_bg_fetch_price, args=(symbol,), daemon=True).start()
         return '<span class="text-green-400" title="Added to watchlist">✅</span>'
     return '<span class="text-red-400" title="Invalid symbol">❌</span>'
+
+
+@app.route("/watchlist/toggle", methods=["POST"])
+def watchlist_toggle():
+    """Toggle watchlist status from stock detail page. Returns updated button HTML."""
+    symbol = request.form.get("symbol", "").upper()
+    if not symbol.endswith(".KL"):
+        symbol += ".KL"
+
+    if symbol not in SYMBOLS:
+        return '<span class="text-red-400 text-sm">Invalid symbol</span>'
+
+    if is_in_watchlist(symbol):
+        remove_from_watchlist(symbol)
+        return _watchlist_btn_html(symbol, False)
+    else:
+        add_to_watchlist(symbol, added_price=0)
+
+        def _bg_fetch_price(sym):
+            try:
+                price = _fetch_current_price(sym)
+                if price:
+                    update_watchlist_price(sym, price)
+            except Exception:
+                pass
+
+        threading.Thread(target=_bg_fetch_price, args=(symbol,), daemon=True).start()
+        return _watchlist_btn_html(symbol, True)
+
+
+def _watchlist_btn_html(symbol, in_watchlist):
+    """Render the watchlist toggle button HTML fragment."""
+    if in_watchlist:
+        return (
+            f'<button hx-post="/watchlist/toggle" hx-vals=\'{{"symbol":"{symbol}"}}\' '
+            f'hx-target="#watchlist-toggle" hx-swap="innerHTML" '
+            f'class="px-3 py-1 rounded text-sm font-bold bg-yellow-900/50 text-yellow-400 '
+            f'hover:bg-red-900/50 hover:text-red-400 transition">'
+            f'★ Watchlisted</button>'
+        )
+    return (
+        f'<button hx-post="/watchlist/toggle" hx-vals=\'{{"symbol":"{symbol}"}}\' '
+        f'hx-target="#watchlist-toggle" hx-swap="innerHTML" '
+        f'class="px-3 py-1 rounded text-sm font-bold bg-surface-100 text-gray-400 '
+        f'hover:bg-yellow-900/50 hover:text-yellow-400 transition">'
+        f'☆ Add to Watchlist</button>'
+    )
 
 
 @app.route("/watchlist/add", methods=["POST"])

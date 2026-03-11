@@ -198,6 +198,17 @@ def add_to_watchlist(symbol: str, added_price: float = 0, notes: str = ""):
     conn.close()
 
 
+def update_watchlist_price(symbol: str, price: float):
+    """Update the added_price for a watchlist entry (used by background fetch)."""
+    conn = _get_conn()
+    conn.execute(
+        "UPDATE watchlist SET added_price = ?, updated_at = ? WHERE symbol = ?",
+        (price, datetime.now().isoformat(), symbol)
+    )
+    conn.commit()
+    conn.close()
+
+
 def remove_from_watchlist(symbol: str) -> bool:
     """Remove a stock from the watchlist."""
     conn = _get_conn()
@@ -213,6 +224,14 @@ def get_watchlist() -> List[dict]:
     rows = conn.execute("SELECT * FROM watchlist ORDER BY added_at DESC").fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def is_in_watchlist(symbol: str) -> bool:
+    """Check if a stock is in the watchlist."""
+    conn = _get_conn()
+    row = conn.execute("SELECT 1 FROM watchlist WHERE symbol = ?", (symbol,)).fetchone()
+    conn.close()
+    return row is not None
 
 
 def check_alerts(current_prices: dict) -> List[dict]:

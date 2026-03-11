@@ -174,8 +174,9 @@
                     <td class="p-3 text-center watchlist-btn"
                         hx-post="/watchlist/quick-add"
                         hx-vals='{"symbol":"{{ r.symbol }}"}'
+                        hx-target="this"
                         hx-swap="innerHTML"
-                        hx-trigger="click"
+                        hx-trigger="click consume"
                         onclick="event.stopPropagation()">
                         <span class="text-gray-500 hover:text-yellow-400 cursor-pointer" title="Add to watchlist">☆</span>
                     </td>
