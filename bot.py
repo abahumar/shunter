@@ -40,6 +40,12 @@ from scanner.advanced import (
     detect_volume_spike,
     calculate_position_size,
 )
+from scanner.fundamentals import (
+    fetch_fundamentals,
+    format_fundamentals_telegram,
+    compute_fundamental_score,
+    classify_fundamental,
+)
 from scanner.signal_tracker import format_tracker_report, get_recent_signals
 from scanner.telegram_notify import send_message
 
@@ -163,7 +169,10 @@ def handle_check(chat_id, args: str):
 
     df = compute_indicators(df)
     ind = get_latest_indicators(df)
-    analysis = analyze_stock(ind)
+
+    # Fetch fundamentals
+    fund = fetch_fundamentals(symbol)
+    analysis = analyze_stock(ind, fundamentals=fund if fund else None)
 
     # Multi-timeframe
     mtf_bonus, mtf_desc = multi_timeframe_score(df)
@@ -224,6 +233,12 @@ def handle_check(chat_id, args: str):
     # Volume spike
     if spike:
         msg += f"\n⚡ <b>Volume Spike:</b> {spike['volume_ratio']:.1f}x avg ({spike['price_change']:+.1f}%)\n"
+
+    # Fundamentals
+    if fund:
+        fund_score = analysis.get("fund_score", 0)
+        fund_reasons = analysis.get("fund_reasons", [])
+        msg += "\n" + format_fundamentals_telegram(fund, fund_score, fund_reasons)
 
     # Sizing
     if sizing["lots"] > 0:

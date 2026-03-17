@@ -38,6 +38,14 @@ from scanner.advanced import (
     detect_volume_spike,
     calculate_position_size,
 )
+from scanner.fundamentals import (
+    fetch_fundamentals,
+    fetch_bulk_fundamentals,
+    format_fundamentals_brief,
+    format_fundamentals_detail,
+    compute_fundamental_score,
+    classify_fundamental,
+)
 
 console = Console()
 
@@ -70,13 +78,26 @@ def cmd_scan(args):
     print_banner()
     top_n = args.top
     shariah = args.shariah
+    use_fundamentals = getattr(args, 'fundamental', False)
     label = "Shariah-compliant" if shariah else "all"
-    console.print(f"\n[bold]Scanning {label} Bursa Malaysia stocks...[/bold]\n")
+    console.print(f"\n[bold]Scanning {label} Bursa Malaysia stocks...[/bold]")
+    if use_fundamentals:
+        console.print("[cyan]📊 Fundamental analysis enabled[/cyan]")
+    console.print()
 
     symbols = get_all_symbols(shariah_only=shariah)
     data = fetch_bulk_data(symbols, period="1y", delay=0.2)
 
     console.print(f"\n[green]✓[/green] Analyzed [bold]{len(data)}[/bold] stocks\n")
+
+    # Fetch fundamentals for stocks that pass price filter
+    fund_data = {}
+    if use_fundamentals:
+        console.print("[bold]Fetching fundamental data...[/bold]")
+        eligible = [s for s, df in data.items()
+                    if len(df) > 0 and df["Close"].iloc[-1] >= 0.50]
+        fund_data = fetch_bulk_fundamentals(eligible)
+        console.print(f"[green]✓[/green] Fundamentals for [bold]{len(fund_data)}[/bold] stocks\n")
 
     # Analyze each stock
     results = []
@@ -84,7 +105,9 @@ def cmd_scan(args):
         try:
             df = compute_indicators(df)
             ind = get_latest_indicators(df)
-            analysis = analyze_stock(ind)
+
+            fund = fund_data.get(symbol, {}) if use_fundamentals else {}
+            analysis = analyze_stock(ind, fundamentals=fund if fund else None)
 
             # Multi-timeframe bonus
             mtf_bonus, mtf_desc = multi_timeframe_score(df)
@@ -118,7 +141,7 @@ def cmd_scan(args):
 
     if buy_results:
         table = Table(
-            title="🟢 BUY Signals",
+            title="🟢 BUY Signals" + (" (+ Fundamentals)" if use_fundamentals else ""),
             box=box.SIMPLE_HEAVY,
             show_lines=True,
         )
@@ -132,11 +155,21 @@ def cmd_scan(args):
         table.add_column("ADX", justify="right", width=5)
         table.add_column("Vol", justify="right", width=6)
         table.add_column("⚡", width=5)
-        table.add_column("Key Reasons", width=40)
+
+        if use_fundamentals:
+            table.add_column("Fund", justify="right", width=5)
+            table.add_column("PE", justify="right", width=6)
+            table.add_column("PB", justify="right", width=5)
+            table.add_column("DY%", justify="right", width=5)
+            table.add_column("Key Reasons", width=35)
+        else:
+            table.add_column("Key Reasons", width=40)
 
         for i, r in enumerate(buy_results[:top_n], 1):
-            top_reasons = "; ".join(r["buy_reasons"][:3])
-            table.add_row(
+            top_reasons = "; ".join(r["buy_reasons"][:2])
+            fund = r.get("fundamentals", {})
+
+            row = [
                 str(i),
                 r["symbol"],
                 r["name"][:25],
@@ -147,8 +180,27 @@ def cmd_scan(args):
                 f"{r['adx']:.0f}" if r["adx"] else "-",
                 f"{r['volume_ratio']:.1f}x" if r["volume_ratio"] else "-",
                 Text(r.get("spike", ""), style="yellow bold") if r.get("spike") else Text(""),
-                top_reasons,
-            )
+            ]
+
+            if use_fundamentals:
+                fs = r.get("fund_score", 0)
+                fund_style = "green" if fs >= 12 else ("yellow" if fs >= 5 else "dim")
+                row.append(Text(f"{fs:+d}", style=fund_style))
+
+                pe = fund.get("pe_ratio")
+                row.append(f"{pe:.1f}" if pe and pe > 0 else "-")
+
+                pb = fund.get("pb_ratio")
+                pb_style = "green" if pb and pb < 1.0 else ""
+                row.append(Text(f"{pb:.2f}", style=pb_style) if pb and pb > 0 else Text("-"))
+
+                dy = fund.get("dividend_yield")
+                dy_style = "green" if dy and dy > 0.03 else ""
+                row.append(Text(f"{dy*100:.1f}", style=dy_style) if dy and dy > 0 else Text("-"))
+
+            row.append(top_reasons)
+            table.add_row(*row)
+
         console.print(table)
     else:
         console.print("[yellow]No strong BUY signals found at this time.[/yellow]")
@@ -183,21 +235,26 @@ def cmd_check(args):
 
     df = compute_indicators(df)
     ind = get_latest_indicators(df)
-    analysis = analyze_stock(ind)
+
+    # Fetch fundamentals
+    console.print("[dim]Fetching fundamental data...[/dim]")
+    fund = fetch_fundamentals(symbol)
+    analysis = analyze_stock(ind, fundamentals=fund if fund else None)
 
     name = get_symbol_name(symbol)
 
     # Header
     signal = analysis["signal"]
     style = SIGNAL_STYLES.get(signal, "")
+    fund_label = f"   |   Fundamental: {analysis.get('fund_quality', 'N/A')} ({analysis.get('fund_score', 0):+d})" if fund else ""
     console.print(Panel(
         f"[bold]{symbol}[/bold] - {name}\n"
-        f"Price: [bold]RM {ind['close']:.2f}[/bold]   |   Signal: [{style}] {signal} [/{style}]   |   Score: {analysis['net_score']}",
+        f"Price: [bold]RM {ind['close']:.2f}[/bold]   |   Signal: [{style}] {signal} [/{style}]   |   Score: {analysis['net_score']}{fund_label}",
         border_style="cyan",
     ))
 
-    # Indicators table
-    table = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
+    # Technical indicators table
+    table = Table(title="📈 Technical Indicators", box=box.SIMPLE, show_header=False, padding=(0, 2))
     table.add_column("Indicator", style="dim", width=20)
     table.add_column("Value", width=15)
     table.add_column("Indicator", style="dim", width=20)
@@ -225,6 +282,65 @@ def cmd_check(args):
     )
     console.print(table)
 
+    # ── Fundamental data table ──
+    if fund:
+        fund_table = Table(title="📊 Fundamental Data", box=box.SIMPLE, show_header=False, padding=(0, 2))
+        fund_table.add_column("Metric", style="dim", width=20)
+        fund_table.add_column("Value", width=15)
+        fund_table.add_column("Metric", style="dim", width=20)
+        fund_table.add_column("Value", width=15)
+
+        pe = fund.get("pe_ratio")
+        pb = fund.get("pb_ratio")
+        dy = fund.get("dividend_yield")
+        roe = fund.get("roe")
+        de = fund.get("debt_to_equity")
+        cr = fund.get("current_ratio")
+        eg = fund.get("earnings_growth")
+        pm = fund.get("profit_margin")
+
+        pe_style = "green" if pe and 0 < pe < 12 else ""
+        pb_style = "green" if pb and 0 < pb < 1.0 else ""
+        dy_style = "green" if dy and dy > 0.03 else ""
+        roe_style = "green" if roe and roe > 0.10 else ""
+
+        fund_table.add_row(
+            "P/E Ratio",
+            Text(f"{pe:.2f}", style=pe_style) if pe and pe > 0 else Text("-"),
+            "P/B Ratio",
+            Text(f"{pb:.2f}", style=pb_style) if pb and pb > 0 else Text("-"),
+        )
+        fund_table.add_row(
+            "Dividend Yield",
+            Text(f"{dy*100:.2f}%", style=dy_style) if dy and dy > 0 else Text("-"),
+            "ROE",
+            Text(f"{roe*100:.2f}%", style=roe_style) if roe else Text("-"),
+        )
+
+        de_val = (de / 100 if de and de > 10 else de) if de else None
+        fund_table.add_row(
+            "Debt/Equity",
+            f"{de_val:.2f}" if de_val is not None else "-",
+            "Current Ratio",
+            f"{cr:.2f}" if cr else "-",
+        )
+        fund_table.add_row(
+            "Earnings Growth",
+            f"{eg*100:.1f}%" if eg else "-",
+            "Profit Margin",
+            f"{pm*100:.1f}%" if pm else "-",
+        )
+
+        fund_score = analysis.get("fund_score", 0)
+        fund_quality = analysis.get("fund_quality", "N/A")
+        fq_style = "green bold" if fund_score >= 12 else ("yellow" if fund_score >= 5 else "red" if fund_score < 0 else "dim")
+        fund_table.add_row(
+            "Fund. Score",
+            Text(f"{fund_score:+d} ({fund_quality})", style=fq_style),
+            "", "",
+        )
+        console.print(fund_table)
+
     # Reasons
     if analysis["buy_reasons"]:
         console.print("\n[green]✓ Bullish signals:[/green]")
@@ -235,6 +351,15 @@ def cmd_check(args):
         console.print("\n[red]✗ Bearish signals:[/red]")
         for r in analysis["sell_reasons"]:
             console.print(f"  [red]•[/red] {r}")
+
+    # Fundamental reasons
+    if analysis.get("fund_reasons"):
+        console.print("\n[cyan]📊 Fundamental factors:[/cyan]")
+        for r in analysis["fund_reasons"]:
+            color = "green" if any(w in r.lower() for w in ("low", "good", "strong", "high dividend", "deep")) else "yellow"
+            if any(w in r.lower() for w in ("negative", "high pe", "high debt", "weak", "expensive", "decline")):
+                color = "red"
+            console.print(f"  [{color}]•[/{color}] {r}")
 
     # ── Multi-timeframe confirmation ──
     mtf_score, mtf_desc = multi_timeframe_score(df)
@@ -581,6 +706,7 @@ def main():
     scan_parser = subparsers.add_parser("scan", help="Scan all stocks for BUY signals")
     scan_parser.add_argument("--top", type=int, default=30, help="Show top N results (default: 30)")
     scan_parser.add_argument("--shariah", action="store_true", help="Shariah-compliant stocks only")
+    scan_parser.add_argument("--fundamental", "-f", action="store_true", help="Include fundamental analysis (PE, PB, DY, ROE)")
     scan_parser.set_defaults(func=cmd_scan)
 
     # check

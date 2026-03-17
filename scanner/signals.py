@@ -228,17 +228,36 @@ def classify_net_score(net: int) -> str:
         return "STRONG SELL"
 
 
-def analyze_stock(ind: dict) -> dict:
-    """Full analysis for a single stock. Returns signal data."""
+def analyze_stock(ind: dict, fundamentals: dict = None) -> dict:
+    """
+    Full analysis for a single stock. Returns signal data.
+    If fundamentals dict is provided, includes fundamental scoring.
+    """
+    from scanner.fundamentals import compute_fundamental_score, classify_fundamental
+
     buy_score, buy_reasons = compute_buy_score(ind)
     sell_score, sell_reasons = compute_sell_score(ind)
-    signal = classify_signal(buy_score, sell_score)
+
+    fund_score = 0
+    fund_reasons = []
+    fund_quality = "N/A"
+
+    if fundamentals:
+        fund_score, fund_reasons = compute_fundamental_score(fundamentals)
+        fund_quality = classify_fundamental(fund_score)
+
+    net_score = buy_score + sell_score + fund_score
+    signal = classify_net_score(net_score)
 
     return {
         "buy_score": buy_score,
         "sell_score": sell_score,
-        "net_score": buy_score + sell_score,
+        "fund_score": fund_score,
+        "net_score": net_score,
         "signal": signal,
         "buy_reasons": buy_reasons,
         "sell_reasons": sell_reasons,
+        "fund_reasons": fund_reasons,
+        "fund_quality": fund_quality,
+        "fundamentals": fundamentals or {},
     }

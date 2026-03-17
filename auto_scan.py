@@ -19,6 +19,7 @@ from scanner.signals import analyze_stock
 from scanner.portfolio import get_portfolio
 from scanner.sectors import analyze_sectors
 from scanner.advanced import multi_timeframe_score, detect_volume_spike
+from scanner.fundamentals import fetch_bulk_fundamentals
 from scanner.signal_tracker import log_signals, update_outcomes, format_outcome_updates
 from scanner.market_sentiment import fetch_market_sentiment
 from scanner.telegram_notify import (
@@ -29,10 +30,17 @@ from scanner.telegram_notify import (
 )
 
 
-def run_scan(shariah: bool = True, min_price: float = 0.50, max_price: float = 3.00, top_n: int = 15):
+def run_scan(shariah: bool = True, min_price: float = 0.50, max_price: float = 3.00, top_n: int = 15, fundamental: bool = False):
     """Run full scan and return results."""
     symbols = get_all_symbols(shariah_only=shariah)
     data = fetch_bulk_data(symbols, period="1y", delay=0.2)
+
+    # Fetch fundamentals if enabled
+    fund_data = {}
+    if fundamental:
+        eligible = [s for s, df in data.items()
+                    if len(df) > 0 and df["Close"].iloc[-1] >= min_price]
+        fund_data = fetch_bulk_fundamentals(eligible)
 
     results = []
     for symbol, df in data.items():
@@ -47,7 +55,8 @@ def run_scan(shariah: bool = True, min_price: float = 0.50, max_price: float = 3
             if max_price > 0 and close > max_price:
                 continue
 
-            analysis = analyze_stock(ind)
+            fund = fund_data.get(symbol, {}) if fundamental else {}
+            analysis = analyze_stock(ind, fundamentals=fund if fund else None)
             if analysis["signal"] in ("STRONG BUY", "BUY"):
                 # Multi-timeframe bonus and volume spike
                 mtf_bonus, mtf_desc = multi_timeframe_score(df)
@@ -116,6 +125,7 @@ def main():
     parser.add_argument("--min-price", type=float, default=0.50)
     parser.add_argument("--max-price", type=float, default=3.00)
     parser.add_argument("--top", type=int, default=15)
+    parser.add_argument("--fundamental", "-f", action="store_true", help="Include fundamental analysis (PE, PB, DY)")
     args = parser.parse_args()
 
     print("🎯 Stock Hunter Auto Scan")
@@ -135,6 +145,7 @@ def main():
         min_price=args.min_price,
         max_price=args.max_price,
         top_n=args.top,
+        fundamental=args.fundamental,
     )
     print(f"✓ Found {len(results)} BUY signals")
 
