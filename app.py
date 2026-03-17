@@ -17,6 +17,7 @@ from scanner.symbols import get_all_symbols, get_symbol_name, search_symbol, SYM
 from scanner.data_fetcher import fetch_stock_data, fetch_bulk_data, fetch_batch_download
 from scanner.indicators import compute_indicators, get_latest_indicators
 from scanner.signals import analyze_stock, classify_net_score
+from scanner.fundamentals import fetch_fundamentals, compute_fundamental_score, classify_fundamental
 from scanner.market_sentiment import fetch_market_sentiment
 from scanner.db import (
     add_stock, remove_stock, get_portfolio,
@@ -505,7 +506,8 @@ def stock_detail(symbol):
 
         df = compute_indicators(df)
         ind = get_latest_indicators(df)
-        analysis = analyze_stock(ind)
+        fund = fetch_fundamentals(symbol)
+        analysis = analyze_stock(ind, fundamentals=fund if fund else None)
         mtf_bonus, mtf_desc = multi_timeframe_score(df)
         analysis["net_score"] += mtf_bonus
         sr = find_support_resistance(df)
@@ -531,6 +533,14 @@ def stock_detail(symbol):
             confirmed=False,
         )
 
+        # Fundamental score
+        fund_score = 0
+        fund_quality = "N/A"
+        fund_reasons = []
+        if fund:
+            fund_score, fund_reasons = compute_fundamental_score(fund)
+            fund_quality = classify_fundamental(fund_score)
+
         detail = {
             "symbol": symbol,
             "name": get_symbol_name(symbol),
@@ -549,6 +559,10 @@ def stock_detail(symbol):
             "vpa": vpa,
             "grade": grade_info["grade"],
             "grade_label": grade_info["label"],
+            "fundamentals": fund if fund else {},
+            "fund_score": fund_score,
+            "fund_quality": fund_quality,
+            "fund_reasons": fund_reasons,
         }
 
         # Trade summary

@@ -1,0 +1,284 @@
+================================================================================
+                    STOCK HUNTER DATA FLOW ARCHITECTURE
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            INPUT: Stock Symbols                             │
+│                    (Shariah-compliant Malaysia stocks)                      │
+└──────────────────────────┬──────────────────────────────────────────────────┘
+                           │
+                           ▼
+        ┌──────────────────────────────────────┐
+        │  fetch_bulk_data(symbols)            │ ← Used by ALL scans
+        │  OR fetch_batch_download(symbols)    │   app.py, bot.py,
+        │  (data_fetcher.py, line 98/45)       │   stock_hunter.py,
+        └──────────────────────────────────────┘   auto_scan.py
+                           │
+                    ╔══════╩════════════════════════════╗
+                    ║  Dict[symbol, DataFrame(OHLCV)]  ║
+                    ║  Open, High, Low, Close, Volume  ║
+                    ║  Dividends (if available)         ║
+                    ╚══════╤════════════════════════════╝
+                           │
+            ┌──────────────┴──────────────┐
+            │                             │
+            ▼                             ▼
+   ╔════════════════════════════════════════════════╗
+   │  compute_indicators(df)                        │
+   │  (indicators.py)                               │
+   │  • EMA: 20, 50, 200                            │
+   │  • RSI (14)                                    │
+   │  • MACD + Histogram                            │
+   │  • ADX, DI+, DI-                               │
+   │  • ATR                                         │
+   │  • Bollinger Bands                             │
+   │  • OBV, Volume SMA                             │
+   │  • 52-week High/Low                            │
+   └──────────────────┬───────────────────────────┘
+                      │
+                      ▼
+        ╔═════════════════════════════════════════╗
+        │  get_latest_indicators(df)              │
+        │  Extract last row as Dict               │
+        │  Return: {close, ema_20, rsi, adx, ...} │
+        ╚═════════════┬═══════════════════════════╝
+                      │
+           ┌──────────┴──────────┐
+           │                     │
+           ▼                     ▼
+     (TECHNICAL)            (FUNDAMENTALS)
+     [signals.py]           [CURRENTLY UNUSED]
+     
+     analyze_stock(ind)     fetch_stock_info(symbol)
+     ├─ compute_buy_score   ├─ trailingPE ❌
+     │  (0-100 points)      ├─ marketCap ❌
+     │  • EMA trend         ├─ sector (but not used)
+     │  • MACD bullish      ├─ dividend_yield ❌
+     │  • RSI momentum      ├─ ROE ❌
+     │  • ADX strength      ├─ ROA ❌
+     │  • Volume confirm    ├─ debt_to_equity ❌
+     │  • Support zones     ├─ payout_ratio ❌
+     │  Returns: (score, reasons)
+     │
+     ├─ compute_sell_score
+     │  (0 to -100 points)
+     │  [Inverse of buy signals]
+     │  Returns: (score, reasons)
+     │
+     └─ classify_signal(buy_score, sell_score)
+        Returns: "STRONG BUY" | "BUY" | "WATCH" | 
+                 "HOLD" | "SELL" | "STRONG SELL"
+
+               ║
+               ║  net_score = buy_score + sell_score
+               ║
+               ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      CORE OUTPUT: analyze_stock()                       │
+│                         (signals.py, line 231-244)                      │
+│                                                                          │
+│  Returns: {                                                             │
+│    "buy_score": int (0-100),                                            │
+│    "sell_score": int (0 to -100),                                       │
+│    "net_score": int (buy + sell),                                       │
+│    "signal": str (STRONG BUY ... STRONG SELL),                          │
+│    "buy_reasons": ["Price > EMA50 > EMA200", ...],                      │
+│    "sell_reasons": ["RSI > 75", ...],                                   │
+│  }                                                                       │
+│                                                                          │
+│  ⚠️ MISSING: fundamental_score, fundamental_reasons                     │
+│               (This is where to inject fundamental analysis!)           │
+└──────────────────────────────┬──────────────────────────────────────────┘
+                               │
+                ┌──────────────┴──────────────┐
+                │                             │
+                ▼                             ▼
+         (app.py _run_scan)         (CLI/Bot/Auto-scan)
+         Advanced Enhancements      Direct Use
+
+    ╔══════════════════════════════════════════════════╗
+    │  multi_timeframe_score(df)                       │
+    │  advanced.py, line 18-74                         │
+    │  • Resample daily to weekly                      │
+    │  • Check if both timeframes agree                │
+    │  Returns: (bonus: ±15, desc: str)                │
+    ╚═════════════┬════════════════════════════════════╝
+                  │
+    ╔═════════════▼════════════════════════════════════╗
+    │  compute_risk_score(ind)                         │
+    │  advanced.py, line 213-283                       │
+    │  Returns: {level: Low/Med/High, points, warnings}│
+    ╚═════════════┬════════════════════════════════════╝
+                  │
+    ╔═════════════▼════════════════════════════════════╗
+    │  compute_confidence_grade(net_score, vol_ratio, │
+    │                           mtf_desc, risk_level,  │
+    │                           confirmed)             │
+    │  advanced.py, line 286-376                       │
+    │  Returns: {grade: A-F, label, points, factors}   │
+    ╚═════════════┬════════════════════════════════════╝
+                  │
+    ╔═════════════▼════════════════════════════════════╗
+    │  detect_emerging_setup(df, ind, net_score,       │
+    │                        grade)                    │
+    │  advanced.py, line 379-483                       │
+    │  Returns: {is_emerging, points, reasons} or None │
+    ╚═════════════┬════════════════════════════════════╝
+                  │
+                  ▼
+          ┌───────────────────────┐
+          │  Compute VPA Score    │
+          │  Volume Price Analysis│
+          │  ±15 adjustment       │
+          └───────────┬───────────┘
+                      │
+                      ▼
+        ╔════════════════════════════╗
+        │  FINAL ANALYSIS RESULT      │
+        │  Enhanced with all scoring  │
+        ╚════════════┬════════════════╝
+                     │
+       ┌─────────────┼─────────────┐
+       │             │             │
+       ▼             ▼             ▼
+    WEB DASH      TELEGRAM        CLI
+    (app.py)      (bot.py)    (stock_hunter.py)
+    
+    Dashboard     /scan          scan command
+    ├─ Cards      /check         check SYMBOL
+    ├─ Scanner    /sector        portfolio
+    ├─ Detail     /spike         sector
+    ├─ Sectors    /portfolio     spike
+    ├─ Spikes     /tracker       backtest
+    └─ Swing
+    
+    Display Results with:
+    • Symbol, Price, Signal
+    • Score breakdown
+    • Buy/Sell/Fundamental reasons
+    • Support/Resistance
+    • Volume spike indicator
+    • Position sizing
+    • Risk level & warnings
+    • Confidence grade A-F
+    • Multi-timeframe alignment
+
+================================================================================
+                         INJECTION POINT FOR FUNDAMENTALS
+================================================================================
+
+Current Flow (Technical Only):
+  fetch_bulk_data
+    ↓
+  compute_indicators
+    ↓
+  analyze_stock(ind)  ← analyze_stock(ind) returns technical signals only
+    ↓
+  Results with 0-100 net_score range
+
+
+Enhanced Flow (Technical + Fundamental):
+  fetch_bulk_data
+    ↓
+  compute_indicators
+    ↓
+  fetch_stock_info(symbol)  ← Fetch fundamental metrics
+    ↓
+  analyze_stock(ind, info)  ← Pass both technical & fundamental
+    ├─ compute_buy_score(ind) → buy_score
+    ├─ compute_sell_score(ind) → sell_score
+    ├─ compute_fundamental_score(info) → fund_score  [NEW]
+    └─ net_score = buy_score + sell_score + fund_score  [MODIFIED]
+    ↓
+  Results with 0-140 net_score range (technical 0-100 + fundamental 0-40)
+
+
+FILES TO MODIFY (In order):
+
+1. scanner/data_fetcher.py (line 29-42)
+   - Enhance fetch_stock_info() to return P/E, dividend, ROE, debt, etc.
+
+2. scanner/fundamentals.py (NEW FILE)
+   - Create compute_fundamental_score(info) function
+   - Score P/E, dividend yield, ROE, debt ratios, etc.
+
+3. scanner/signals.py (line 231-244)
+   - Modify analyze_stock() signature: add info: dict = None
+   - Add fundamental_score to return dict
+   - Add fundamental_score to net_score calculation
+
+4. Update ALL callers:
+   - auto_scan.py line 38-62
+   - bot.py line 97-118, 164
+   - app.py line 243-296
+   - stock_hunter.py line 87, 184
+
+5. Display enhancements:
+   - CLI: Add "Fund Score" column, display fundamental reasons
+   - Web: Add fundamentals section to detail pages
+   - Bot: Show fundamental reasons in /check output
+
+================================================================================
+                            SCORING EXAMPLES
+================================================================================
+
+EXAMPLE 1: MAYBANK (5225.KL) - Strong Quality Stock
+┌────────────────────────────────────────────────────────────────┐
+│ Technical Scoring                                              │
+│ ├─ EMA Trend: +20 (Price > EMA50 > EMA200)                    │
+│ ├─ MACD: +5 (positive)                                         │
+│ ├─ RSI: +15 (45 = momentum)                                    │
+│ ├─ ADX: +10 (strong)                                           │
+│ ├─ Volume: +10 (1.3x avg)                                      │
+│ └─ Technical: +60                                              │
+│                                                                │
+│ Fundamental Scoring (NEW)                                      │
+│ ├─ P/E: +8 (Fair at 12x)                                       │
+│ ├─ Dividend: +10 (5.2% yield)                                  │
+│ ├─ ROE: +6 (18% strong)                                        │
+│ ├─ Leverage: +3 (0.4x D/E low)                                 │
+│ └─ Fundamental: +27                                            │
+│                                                                │
+│ Advanced Scoring                                               │
+│ ├─ Multi-TF: +15 (both timeframes bullish)                     │
+│ ├─ Confirmation: +10 (was BUY last scan)                       │
+│ └─ Advanced: +25                                               │
+│                                                                │
+│ TOTAL: 60 + 27 + 25 = 112 points → STRONG BUY                 │
+│ Confidence Grade: A (95/100 points)                            │
+│ Risk Level: Low (2/10 risk points)                             │
+└────────────────────────────────────────────────────────────────┘
+
+EXAMPLE 2: BIOTECH GROWTH (Tech Stock) - No dividend, High P/E
+┌────────────────────────────────────────────────────────────────┐
+│ Technical Scoring                                              │
+│ ├─ EMA Trend: +20 (Strong uptrend)                             │
+│ ├─ MACD: +15 (bullish crossover)                               │
+│ ├─ RSI: +10 (55 = early momentum)                              │
+│ ├─ ADX: +15 (very strong)                                      │
+│ ├─ Volume: +15 (2.5x avg!)                                     │
+│ └─ Technical: +75                                              │
+│                                                                │
+│ Fundamental Scoring (NEW)                                      │
+│ ├─ P/E: -5 (35x too expensive)                                 │
+│ ├─ Dividend: 0 (no dividend)                                   │
+│ ├─ ROE: +8 (25% growth)                                        │
+│ ├─ Leverage: -3 (1.8x D/E risky)                               │
+│ └─ Fundamental: 0 (net zero after negatives)                   │
+│                                                                │
+│ Advanced Scoring                                               │
+│ ├─ Multi-TF: +5 (partial alignment)                            │
+│ ├─ Risk Level: HIGH (7/10 risk points)                         │
+│ └─ Advanced: +5                                                │
+│                                                                │
+│ TOTAL: 75 + 0 + 5 = 80 points → BUY (but with caution)         │
+│ Confidence Grade: C (48/100 points)                            │
+│ Risk Level: High - proceed carefully!                          │
+└────────────────────────────────────────────────────────────────┘
+
+KEY INSIGHT: Fundamentals don't replace technicals, they COMPLEMENT them.
+The Growth stock scores BUY on technicals (momentum traders might buy),
+but fundamentals reduce confidence (swing traders might skip it).
+Both perspectives valuable for different trading styles!
+
+================================================================================
